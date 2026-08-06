@@ -1,0 +1,793 @@
+<!doctype html>
+<html lang="en" class="scroll-smooth">
+<head>
+  <!-- =========================
+       HEAD: meta, fonts, tailwind
+       ========================= -->
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>LibraSuite — User Management</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+  <script>
+    window.tailwind = { config: { darkMode: 'class' } }
+  </script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial; }
+    .toast-enter { transform: translateY(8px); opacity: 0; }
+    .toast-show { transform: translateY(0); opacity: 1; transition: all .28s cubic-bezier(.2,.9,.3,1); }
+    .spinner { border: 4px solid rgba(0,0,0,0.08); border-top-color: rgba(37,99,235,1); border-radius: 9999px; width: 36px; height: 36px; animation: spin .9s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg);} }
+    .avatar-placeholder { background: linear-gradient(135deg,#eef2ff,#e6fffa); color:#111827; }
+  </style>
+</head>
+<body class="bg-gray-50 text-slate-800">
+
+  <!-- =========================
+       NAV / HEADER
+       - Professional header with basic controls
+       ========================= -->
+  <header class="bg-white shadow-sm sticky top-0 z-40">
+    <div class="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <svg class="w-8 h-8 text-indigo-600" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3 5.5C3 4.119 4.12 3 5.5 3h11C18.88 3 20 4.119 20 5.5V19c0 .553-.447 1-1 1H5.5C4.12 20 3 18.881 3 17.5V5.5Z" stroke="currentColor" stroke-width="1.2"/></svg>
+        <div>
+          <div class="text-lg font-semibold">LibraSuite</div>
+          <div class="text-xs text-slate-400 -mt-1">User Management</div>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-3">
+        <div id="currentRoleBadge" class="text-sm px-3 py-1 rounded bg-slate-100 text-slate-700 hidden">Role</div>
+        <button id="btnSignOut" class="text-sm px-3 py-1 bg-rose-50 text-rose-600 rounded hidden">Sign Out</button>
+      </div>
+    </div>
+  </header>
+
+  <!-- =========================
+       MAIN: Two-column responsive layout
+       Left: Controls / Form panels
+       Right: Users grid + search
+       ========================= -->
+  <main class="max-w-7xl mx-auto px-4 py-8 grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+    <!-- =========================
+         LEFT COLUMN: Profile panel + Edit modal + Change password + Delete account
+         - Self profile viewing/editing
+         - Upload profile picture
+         - Change password (requires reauth)
+         - Delete account (self)
+         ========================= -->
+    <section class="space-y-6 lg:col-span-1">
+
+      <!-- ---------- CURRENT USER PROFILE CARD ---------- -->
+      <div class="bg-white rounded-lg shadow p-6">
+        <!-- Section comment: View Profile -->
+        <div class="flex items-center gap-4">
+          <div id="selfAvatar" class="w-20 h-20 rounded-full bg-gray-100 flex items-center justify-center overflow-hidden avatar-placeholder">
+            <!-- profile img or initials inserted by JS -->
+          </div>
+          <div>
+            <div id="selfName" class="text-lg font-semibold">Not signed in</div>
+            <div id="selfEmail" class="text-sm text-slate-500">—</div>
+            <div id="selfRole" class="text-xs text-slate-400 mt-1">Role: —</div>
+          </div>
+        </div>
+
+        <div class="mt-4 space-y-3">
+          <p id="selfBio" class="text-sm text-slate-600">No bio available.</p>
+
+          <div class="flex flex-wrap gap-2">
+            <button id="editProfileBtn" class="px-3 py-2 bg-indigo-600 text-white rounded text-sm hidden">Edit Profile</button>
+            <label for="uploadInput" id="uploadLabel" class="px-3 py-2 bg-slate-100 text-slate-700 rounded text-sm cursor-pointer hidden">Upload Picture</label>
+            <input id="uploadInput" type="file" accept="image/*" class="hidden" />
+            <button id="changePasswordBtn" class="px-3 py-2 bg-slate-100 text-slate-700 rounded text-sm hidden">Change Password</button>
+            <button id="deleteAccountBtn" class="px-3 py-2 bg-rose-50 text-rose-600 rounded text-sm hidden">Delete Account</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ---------- EDIT PROFILE PANEL (inline modal/panel) ---------- -->
+      <div id="editPanel" class="bg-white rounded-lg shadow p-6 hidden">
+        <!-- Section comment: Edit Profile -->
+        <h3 class="text-lg font-semibold mb-3">Edit Profile</h3>
+        <form id="editForm" class="space-y-3">
+          <div>
+            <label class="text-sm">Full name</label>
+            <input id="editName" type="text" class="mt-1 block w-full px-3 py-2 rounded border focus:ring-indigo-200" required />
+          </div>
+          <div>
+            <label class="text-sm">Email (read-only)</label>
+            <input id="editEmail" type="email" class="mt-1 block w-full px-3 py-2 rounded border bg-slate-50" readonly />
+          </div>
+          <div>
+            <label class="text-sm">Bio</label>
+            <textarea id="editBio" rows="3" class="mt-1 block w-full px-3 py-2 rounded border" maxlength="300"></textarea>
+            <div class="text-xs text-slate-400 mt-1">Max 300 characters</div>
+          </div>
+
+          <div class="flex items-center gap-2">
+            <button id="saveProfileBtn" type="submit" class="px-4 py-2 bg-indigo-600 text-white rounded">Save</button>
+            <button id="cancelEditBtn" type="button" class="px-3 py-2 text-sm text-slate-500">Cancel</button>
+          </div>
+        </form>
+      </div>
+
+      <!-- ---------- CHANGE PASSWORD PANEL ---------- -->
+      <div id="passwordPanel" class="bg-white rounded-lg shadow p-6 hidden">
+        <!-- Section comment: Change Password -->
+        <h3 class="text-lg font-semibold mb-3">Change Password</h3>
+        <form id="passwordForm" class="space-y-3">
+          <div>
+            <label class="text-sm">Current password</label>
+            <input id="currentPassword" type="password" class="mt-1 block w-full px-3 py-2 rounded border" placeholder="Enter current password" required />
+          </div>
+          <div>
+            <label class="text-sm">New password</label>
+            <input id="newPassword" type="password" class="mt-1 block w-full px-3 py-2 rounded border" placeholder="Min 8 chars, 1 uppercase, 1 number" required />
+          </div>
+
+          <div class="flex items-center gap-2">
+            <button id="savePasswordBtn" type="submit" class="px-4 py-2 bg-indigo-600 text-white rounded">Update Password</button>
+            <button id="cancelPasswordBtn" type="button" class="px-3 py-2 text-sm text-slate-500">Cancel</button>
+          </div>
+        </form>
+      </div>
+
+      <!-- ---------- DELETE ACCOUNT CONFIRM ---------- -->
+      <div id="deleteConfirm" class="bg-white rounded-lg shadow p-6 hidden">
+        <!-- Section comment: Delete account -->
+        <h3 class="text-lg font-semibold mb-3 text-rose-600">Delete Account</h3>
+        <p class="text-sm text-slate-600">Deleting your account will remove your profile and sign you out. This action is irreversible.</p>
+        <div class="mt-4 flex gap-2">
+          <button id="confirmDeleteSelf" class="px-4 py-2 bg-rose-600 text-white rounded">Delete my account</button>
+          <button id="cancelDeleteSelf" class="px-3 py-2 text-sm text-slate-500">Cancel</button>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- =========================
+         RIGHT: Users grid + search + admin actions
+         - Admin can view all users, edit roles, delete profiles/photos (auth deletion must be done securely server-side).
+         - Realtime updates are reflected here
+         ========================= -->
+    <section class="lg:col-span-2 space-y-6">
+
+      <!-- ---------- SEARCH BAR & Controls ---------- -->
+      <div class="bg-white rounded-lg shadow p-4 flex flex-wrap items-center gap-3 justify-between">
+        <!-- Section comment: Search User -->
+        <div class="flex items-center gap-3 flex-1 min-w-0">
+          <div class="relative flex-1">
+            <input id="searchInput" type="search" placeholder="Search users by name or email..." class="w-full px-4 py-2 rounded border focus:ring-indigo-200" />
+            <button id="clearSearch" class="absolute right-2 top-2 text-slate-400 hidden">✕</button>
+          </div>
+        </div>
+
+        <div class="flex items-center gap-2">
+          <div id="usersCount" class="text-sm text-slate-500">0 users</div>
+        </div>
+      </div>
+
+      <!-- ---------- USERS GRID (responsive cards) ---------- -->
+      <div id="usersGrid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        <!-- JS will inject user cards here -->
+      </div>
+
+      <!-- ---------- DETAIL / EDIT SIDEPANEL (for admin viewing a specific user) ---------- -->
+      <div id="adminEditPanel" class="bg-white rounded-lg shadow p-6 hidden">
+        <!-- Section comment: Admin edit user -->
+        <div class="flex items-start justify-between gap-4">
+          <div class="flex items-center gap-4">
+            <div id="adminTargetAvatar" class="w-16 h-16 rounded-full bg-gray-100 overflow-hidden avatar-placeholder"></div>
+            <div>
+              <div id="adminTargetName" class="font-semibold">—</div>
+              <div id="adminTargetEmail" class="text-sm text-slate-500">—</div>
+              <div id="adminTargetUid" class="text-xs text-slate-400 mt-1">UID: —</div>
+            </div>
+          </div>
+          <div>
+            <button id="closeAdminEdit" class="text-sm text-slate-500">Close</button>
+          </div>
+        </div>
+
+        <form id="adminEditForm" class="mt-4 space-y-3">
+          <div>
+            <label class="text-sm">Full name</label>
+            <input id="adminEditName" type="text" class="mt-1 block w-full px-3 py-2 rounded border" required />
+          </div>
+
+          <div>
+            <label class="text-sm">Role</label>
+            <select id="adminEditRole" class="mt-1 block w-full px-3 py-2 rounded border">
+              <option value="user">user</option>
+              <option value="admin">admin</option>
+            </select>
+          </div>
+
+          <div>
+            <label class="text-sm">Bio</label>
+            <textarea id="adminEditBio" rows="3" class="mt-1 block w-full px-3 py-2 rounded border" maxlength="300"></textarea>
+          </div>
+
+          <div class="flex gap-2">
+            <button id="adminSaveBtn" class="px-4 py-2 bg-indigo-600 text-white rounded">Save changes</button>
+            <button id="adminDeleteBtn" class="px-4 py-2 bg-rose-50 text-rose-600 rounded">Remove profile & photo</button>
+          </div>
+        </form>
+      </div>
+    </section>
+  </main>
+
+  <!-- =========================
+       FOOTER: small legal note
+       ========================= -->
+  <footer class="max-w-7xl mx-auto px-4 py-6 text-sm text-slate-400">
+    <div>Remember: In production, enforce admin operations server-side (Cloud Functions) and tighten DB & Storage rules.</div>
+  </footer>
+
+  <!-- =========================
+       Toasts + Loading overlay
+       ========================= -->
+  <div id="toastContainer" class="fixed bottom-6 right-6 flex flex-col gap-2 z-50"></div>
+
+  <div id="loadingOverlay" class="fixed inset-0 z-40 hidden items-center justify-center bg-black/20">
+    <div class="bg-white rounded-lg p-6 flex items-center gap-4 shadow">
+      <div class="spinner" aria-hidden="true"></div>
+      <div>
+        <div class="font-medium">Processing…</div>
+        <div class="text-xs text-slate-500">This may take a few moments.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- =========================
+       Firebase SDKs (compat for single-file demo)
+       - Auth, Database, Storage (compat builds)
+       ========================= -->
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-storage-compat.js"></script>
+
+  <script>
+    /* =========================================================================
+       CONFIG & INITIALIZATION
+       - Replace firebaseConfig with your project's credentials
+       ========================================================================= */
+    const firebaseConfig = {
+      apiKey: "AIzaSyBBxENou0wJoiIALCm27TvDQEKHiGdlVf4",
+      authDomain: "digital-library-3cb1c.firebaseapp.com",
+      databaseURL: "https://digital-library-3cb1c-default-rtdb.asia-southeast1.firebasedatabase.app",
+      projectId: "digital-library-3cb1c",
+      storageBucket: "digital-library-3cb1c.firebasestorage.app",
+      messagingSenderId: "3671589649",
+      appId: "1:3671589649:web:83e9e90236f6a88f07c2b0",
+    };
+
+    firebase.initializeApp(firebaseConfig);
+    const auth = firebase.auth();
+    const db = firebase.database();
+    const storage = firebase.storage();
+
+    /* =========================================================================
+       UI ELEMENTS (refs)
+       ========================================================================= */
+    const toastContainer = document.getElementById('toastContainer');
+    const loadingOverlay = document.getElementById('loadingOverlay');
+
+    const selfAvatar = document.getElementById('selfAvatar');
+    const selfName = document.getElementById('selfName');
+    const selfEmail = document.getElementById('selfEmail');
+    const selfBio = document.getElementById('selfBio');
+    const selfRole = document.getElementById('selfRole');
+
+    const btnSignOut = document.getElementById('btnSignOut');
+    const currentRoleBadge = document.getElementById('currentRoleBadge');
+
+    const uploadInput = document.getElementById('uploadInput');
+    const uploadLabel = document.getElementById('uploadLabel');
+    const editProfileBtn = document.getElementById('editProfileBtn');
+    const editPanel = document.getElementById('editPanel');
+    const editForm = document.getElementById('editForm');
+    const editName = document.getElementById('editName');
+    const editEmail = document.getElementById('editEmail');
+    const editBio = document.getElementById('editBio');
+    const saveProfileBtn = document.getElementById('saveProfileBtn');
+    const cancelEditBtn = document.getElementById('cancelEditBtn');
+
+    const changePasswordBtn = document.getElementById('changePasswordBtn');
+    const passwordPanel = document.getElementById('passwordPanel');
+    const passwordForm = document.getElementById('passwordForm');
+    const currentPassword = document.getElementById('currentPassword');
+    const newPassword = document.getElementById('newPassword');
+    const cancelPasswordBtn = document.getElementById('cancelPasswordBtn');
+
+    const deleteAccountBtn = document.getElementById('deleteAccountBtn');
+    const deleteConfirm = document.getElementById('deleteConfirm');
+    const confirmDeleteSelf = document.getElementById('confirmDeleteSelf');
+    const cancelDeleteSelf = document.getElementById('cancelDeleteSelf');
+
+    // Users list & admin panel
+    const usersGrid = document.getElementById('usersGrid');
+    const usersCount = document.getElementById('usersCount');
+    const searchInput = document.getElementById('searchInput');
+    const clearSearch = document.getElementById('clearSearch');
+
+    const adminEditPanel = document.getElementById('adminEditPanel');
+    const adminTargetAvatar = document.getElementById('adminTargetAvatar');
+    const adminTargetName = document.getElementById('adminTargetName');
+    const adminTargetEmail = document.getElementById('adminTargetEmail');
+    const adminTargetUid = document.getElementById('adminTargetUid');
+    const adminEditForm = document.getElementById('adminEditForm');
+    const adminEditName = document.getElementById('adminEditName');
+    const adminEditRole = document.getElementById('adminEditRole');
+    const adminEditBio = document.getElementById('adminEditBio');
+    const adminSaveBtn = document.getElementById('adminSaveBtn');
+    const adminDeleteBtn = document.getElementById('adminDeleteBtn');
+    const closeAdminEdit = document.getElementById('closeAdminEdit');
+
+    /* =========================================================================
+       UTILITIES: toasts, loading, validation
+       ========================================================================= */
+    function showLoading(on = true) {
+      loadingOverlay.classList.toggle('hidden', !on);
+    }
+
+    function showToast(message, type = 'success', duration = 4000) {
+      const el = document.createElement('div');
+      el.className = `toast-enter px-4 py-2 rounded shadow flex items-center gap-3 max-w-sm ${type === 'success' ? 'bg-emerald-50 text-emerald-800 border border-emerald-100' : ''} ${type === 'error' ? 'bg-rose-50 text-rose-800 border border-rose-100' : ''} ${type === 'info' ? 'bg-sky-50 text-sky-800 border border-sky-100' : ''}`;
+      el.innerHTML = `<div class="text-sm">${message}</div>`;
+      toastContainer.appendChild(el);
+      requestAnimationFrame(() => el.classList.add('toast-show'));
+      setTimeout(() => { el.classList.remove('toast-show'); setTimeout(() => el.remove(), 300); }, duration);
+    }
+
+    function isValidEmail(email) {
+      return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+    }
+    function isValidPassword(password) {
+      return /^(?=.*[A-Z])(?=.*\d).{8,}$/.test(password);
+    }
+
+    /* =========================================================================
+       AUTH STATE: track current user and their DB profile (realtime)
+       - On sign-in, we listen to /users/{uid} for profile updates.
+       - We also read /users (list) for admin capabilities, using a realtime listener.
+       ========================================================================= */
+    let currentUser = null;
+    let currentProfileRef = null;
+
+    // Realtime listener for all users (admin view). We'll always listen but render based on role.
+    const usersRef = db.ref('users');
+    let usersSnapshotCache = {}; // store user objects keyed by uid
+
+    usersRef.on('value', (snap) => {
+      const val = snap.val() || {};
+      usersSnapshotCache = val;
+      renderUsersGrid(val);
+    }, (err) => {
+      console.error('usersRef error', err);
+      showToast('Failed to read users list', 'error');
+    });
+
+    // Auth state change
+    auth.onAuthStateChanged(async (user) => {
+      currentUser = user;
+      if (user) {
+        btnSignOut.classList.remove('hidden');
+        // Listen to current user's profile data in DB
+        if (currentProfileRef) currentProfileRef.off();
+        currentProfileRef = db.ref('users/' + user.uid);
+        currentProfileRef.on('value', (snap) => {
+          const profile = snap.val() || {};
+          updateSelfProfileUI(profile, user);
+        });
+      } else {
+        // signed out: clear UI
+        btnSignOut.classList.add('hidden');
+        resetSelfUI();
+        if (currentProfileRef) { currentProfileRef.off(); currentProfileRef = null; }
+      }
+    });
+
+    /* =========================================================================
+       UPDATE SELF UI: populate profile card
+       ========================================================================= */
+    function resetSelfUI() {
+      selfAvatar.innerHTML = '';
+      selfName.textContent = 'Not signed in';
+      selfEmail.textContent = '—';
+      selfBio.textContent = 'No bio available.';
+      selfRole.textContent = 'Role: —';
+      currentRoleBadge.classList.add('hidden');
+      editProfileBtn.classList.add('hidden');
+      uploadLabel.classList.add('hidden');
+      changePasswordBtn.classList.add('hidden');
+      deleteAccountBtn.classList.add('hidden');
+      editPanel.classList.add('hidden');
+      passwordPanel.classList.add('hidden');
+      deleteConfirm.classList.add('hidden');
+    }
+
+    function updateSelfProfileUI(profile, user) {
+      const name = profile.name || user.displayName || 'Unnamed';
+      const email = profile.email || user.email || '—';
+      const bio = profile.bio || 'No bio available.';
+      const role = profile.role || 'user';
+      const photoURL = profile.photoURL || null;
+
+      // Avatar
+      if (photoURL) {
+        selfAvatar.innerHTML = `<img src="${photoURL}" alt="${name}" class="w-full h-full object-cover">`;
+      } else {
+        // initials
+        const initials = name.split(' ').map(s => s[0]).join('').slice(0,2).toUpperCase();
+        selfAvatar.innerHTML = `<div class="w-full h-full flex items-center justify-center text-lg font-semibold">${initials}</div>`;
+      }
+
+      selfName.textContent = name;
+      selfEmail.textContent = email;
+      selfBio.textContent = bio;
+      selfRole.textContent = 'Role: ' + role;
+
+      // Role badge + show controls
+      currentRoleBadge.textContent = role.toUpperCase();
+      currentRoleBadge.classList.remove('hidden');
+
+      // Show profile actions for signed-in user
+      editProfileBtn.classList.remove('hidden');
+      uploadLabel.classList.remove('hidden');
+      changePasswordBtn.classList.remove('hidden');
+      deleteAccountBtn.classList.remove('hidden');
+    }
+
+    /* =========================================================================
+       USERS GRID: render cards from snapshot (realtime)
+       - Supports search via searchInput
+       - Admin can click to open adminEditPanel for a selected user
+       ========================================================================= */
+    function renderUsersGrid(usersObj) {
+      const users = Object.entries(usersObj || {}).map(([uid, profile]) => ({ uid, ...profile }));
+      const q = searchInput.value.trim().toLowerCase();
+      const filtered = users.filter(u => {
+        if (!q) return true;
+        return (u.name && u.name.toLowerCase().includes(q)) || (u.email && u.email.toLowerCase().includes(q));
+      });
+
+      usersCount.textContent = `${filtered.length} users`;
+
+      usersGrid.innerHTML = '';
+      filtered.forEach(user => {
+        const card = document.createElement('article');
+        card.className = 'bg-white rounded-lg shadow p-4 flex flex-col';
+        card.innerHTML = `
+          <div class="flex items-center gap-3">
+            <div class="w-14 h-14 rounded-full overflow-hidden bg-gray-100 avatar-placeholder" id="avatar-${user.uid}">
+              ${user.photoURL ? `<img src="${user.photoURL}" alt="${escapeHtml(user.name||'User')}" class="w-full h-full object-cover">` : `<div class="w-full h-full flex items-center justify-center text-sm font-semibold">${(user.name||'U').split(' ').map(s=>s[0]).join('').slice(0,2).toUpperCase()}</div>`}
+            </div>
+            <div class="flex-1 min-w-0">
+              <div class="font-medium truncate">${escapeHtml(user.name || 'Unnamed')}</div>
+              <div class="text-xs text-slate-500 truncate">${escapeHtml(user.email || '—')}</div>
+              <div class="text-xs text-slate-400 mt-1">Role: ${escapeHtml(user.role || 'user')}</div>
+            </div>
+            <div class="flex items-center gap-2">
+              <button data-uid="${user.uid}" class="viewBtn text-sm px-3 py-1 bg-slate-50 rounded">View</button>
+            </div>
+          </div>
+
+          <div class="mt-3 text-sm text-slate-600">${escapeHtml((user.bio||'').slice(0,120))}${(user.bio && user.bio.length>120)?'...':''}</div>
+        `;
+        // attach handler
+        card.querySelector('.viewBtn').addEventListener('click', () => openAdminEdit(user.uid));
+        usersGrid.appendChild(card);
+      });
+    }
+
+    // quick escape helper for safety when injecting text
+    function escapeHtml(str='') {
+      return String(str)
+        .replaceAll('&','&amp;')
+        .replaceAll('<','&lt;')
+        .replaceAll('>','&gt;')
+        .replaceAll('"','&quot;')
+        .replaceAll("'", '&#039;');
+    }
+
+    // search handlers
+    searchInput.addEventListener('input', () => {
+      clearSearch.classList.toggle('hidden', !searchInput.value);
+      renderUsersGrid(usersSnapshotCache);
+    });
+    clearSearch.addEventListener('click', () => { searchInput.value=''; clearSearch.classList.add('hidden'); renderUsersGrid(usersSnapshotCache); });
+
+    /* =========================================================================
+       ADMIN EDIT PANEL: open/close and save actions
+       - Admin selects a user card to view/edit
+       - All updates are written to Realtime Database at /users/{uid}
+       - Removing an auth user cannot be performed securely from client; we remove DB + photo here.
+       ========================================================================= */
+    let adminTargetUidVal = null;
+
+    function openAdminEdit(uid) {
+      // Check current user's role
+      if (!currentUser) { showToast('Sign in as admin to manage users', 'error'); return; }
+      // read current user's role from DB (sync)
+      db.ref('users/' + currentUser.uid + '/role').once('value').then(snap => {
+        const role = snap.val() || 'user';
+        if (role !== 'admin') {
+          // non-admin: open a read-only view of the profile (we reuse panel but make fields readonly)
+          const profile = usersSnapshotCache[uid] || {};
+          showReadOnlyPanel(profile);
+          return;
+        }
+        // admin: open adminFullEdit
+        const profile = usersSnapshotCache[uid] || {};
+        adminTargetUidVal = uid;
+        adminTargetName.textContent = profile.name || 'Unnamed';
+        adminTargetEmail.textContent = profile.email || '—';
+        adminTargetUid.textContent = 'UID: ' + uid;
+        adminEditName.value = profile.name || '';
+        adminEditRole.value = profile.role || 'user';
+        adminEditBio.value = profile.bio || '';
+        if (profile.photoURL) adminTargetAvatar.innerHTML = `<img src="${profile.photoURL}" class="w-full h-full object-cover">`;
+        else adminTargetAvatar.innerHTML = `<div class="w-full h-full flex items-center justify-center text-sm font-semibold">${(profile.name||'U').split(' ').map(s=>s[0]).join('').slice(0,2).toUpperCase()}</div>`;
+        adminEditPanel.classList.remove('hidden');
+        adminEditPanel.scrollIntoView({ behavior: 'smooth' });
+      });
+    }
+
+    function showReadOnlyPanel(profile) {
+      adminTargetUidVal = null;
+      adminTargetName.textContent = profile.name || 'Unnamed';
+      adminTargetEmail.textContent = profile.email || '—';
+      adminTargetUid.textContent = '';
+      adminEditName.value = profile.name || '';
+      adminEditRole.value = profile.role || 'user';
+      adminEditBio.value = profile.bio || '';
+      if (profile.photoURL) adminTargetAvatar.innerHTML = `<img src="${profile.photoURL}" class="w-full h-full object-cover">`;
+      else adminTargetAvatar.innerHTML = `<div class="w-full h-full flex items-center justify-center text-sm font-semibold">${(profile.name||'U').split(' ').map(s=>s[0]).join('').slice(0,2).toUpperCase()}</div>`;
+      // make role & inputs readonly visually
+      adminEditRole.disabled = true;
+      adminEditPanel.classList.remove('hidden');
+    }
+
+    closeAdminEdit.addEventListener('click', () => {
+      adminEditPanel.classList.add('hidden');
+      adminEditRole.disabled = false;
+    });
+
+    adminEditForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      if (!adminTargetUidVal) { showToast('No user selected for admin edit', 'error'); return; }
+      const updates = {
+        name: adminEditName.value.trim() || 'Unnamed',
+        role: adminEditRole.value,
+        bio: adminEditBio.value.trim().slice(0,300),
+        updatedAt: Date.now()
+      };
+      try {
+        showLoading(true);
+        await db.ref('users/' + adminTargetUidVal).update(updates);
+        showToast('User profile updated', 'success');
+        adminEditPanel.classList.add('hidden');
+      } catch (err) {
+        console.error(err);
+        showToast('Failed to update user', 'error');
+      } finally {
+        showLoading(false);
+        adminEditRole.disabled = false;
+      }
+    });
+
+    // Admin "delete profile & photo" (removes DB entry & storage file)
+    adminDeleteBtn.addEventListener('click', async () => {
+      if (!adminTargetUidVal) { showToast('No user selected', 'error'); return; }
+      if (!confirm('Remove this user profile and photo from the database/storage? This will NOT delete the Firebase Auth user. For full auth deletion, run a secure server-side function.')) return;
+      try {
+        showLoading(true);
+        // remove photo (if exists)
+        const profileSnap = await db.ref('users/' + adminTargetUidVal).once('value');
+        const profile = profileSnap.val() || {};
+        if (profile.photoPath) {
+          await storage.ref(profile.photoPath).delete().catch(()=>{ /* ignore if already missing */ });
+        }
+        // remove db entry
+        await db.ref('users/' + adminTargetUidVal).remove();
+        showToast('Profile & photo removed from DB/storage', 'success');
+        adminEditPanel.classList.add('hidden');
+      } catch (err) {
+        console.error(err);
+        showToast('Failed to remove profile', 'error');
+      } finally { showLoading(false); }
+    });
+
+    /* =========================================================================
+       EDIT PROFILE (self)
+       - Update /users/{uid} fields (name, bio)
+       - Upload picture saves to Storage at /profile_pics/{uid}/{timestamp}.{ext}
+       - Stores photoURL and photoPath in profile
+       ========================================================================= */
+    editProfileBtn.addEventListener('click', () => {
+      if (!currentUser) { showToast('Sign in to edit your profile', 'error'); return; }
+      // load current profile values
+      db.ref('users/' + currentUser.uid).once('value').then(snap => {
+        const p = snap.val() || {};
+        editName.value = p.name || '';
+        editEmail.value = p.email || currentUser.email || '';
+        editBio.value = p.bio || '';
+        editPanel.classList.remove('hidden');
+        editPanel.scrollIntoView({ behavior: 'smooth' });
+      });
+    });
+
+    cancelEditBtn.addEventListener('click', () => editPanel.classList.add('hidden'));
+
+    editForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      if (!currentUser) { showToast('Sign in first', 'error'); return; }
+      const name = editName.value.trim();
+      const bio = editBio.value.trim().slice(0,300);
+      if (!name) { showToast('Name cannot be empty', 'error'); return; }
+      try {
+        showLoading(true);
+        const updates = { name, bio, updatedAt: Date.now() };
+        await db.ref('users/' + currentUser.uid).update(updates);
+        // optionally update auth displayName
+        await currentUser.updateProfile({ displayName: name }).catch(()=>{});
+        showToast('Profile updated', 'success');
+        editPanel.classList.add('hidden');
+      } catch (err) {
+        console.error(err);
+        showToast('Failed to update profile', 'error');
+      } finally { showLoading(false); }
+    });
+
+    // Upload picture
+    uploadInput.addEventListener('change', async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      if (!currentUser) { showToast('Sign in first', 'error'); return; }
+      // basic validation
+      if (!file.type.startsWith('image/')) { showToast('Please select an image', 'error'); return; }
+      const maxMB = 5;
+      if (file.size > maxMB * 1024 * 1024) { showToast('Image too large (max 5MB)', 'error'); return; }
+
+      const ext = file.name.split('.').pop();
+      const photoPath = `profile_pics/${currentUser.uid}/${Date.now()}.${ext}`;
+      const ref = storage.ref(photoPath);
+      try {
+        showLoading(true);
+        const uploadTask = ref.put(file);
+        // show simple progress in toast
+        const progressToastId = 'p' + Date.now();
+        showToast('Uploading photo...', 'info', 5000);
+        // wait for completion
+        await uploadTask;
+        const url = await ref.getDownloadURL();
+        await db.ref('users/' + currentUser.uid).update({ photoURL: url, photoPath, updatedAt: Date.now() });
+        // update auth photoURL for convenience (optional)
+        await currentUser.updateProfile({ photoURL: url }).catch(()=>{});
+        showToast('Profile picture uploaded', 'success');
+      } catch (err) {
+        console.error(err);
+        showToast('Failed to upload photo', 'error');
+      } finally {
+        showLoading(false);
+        uploadInput.value = '';
+      }
+    });
+
+    /* =========================================================================
+       CHANGE PASSWORD (self)
+       - Requires re-authentication using current password
+       - Use auth.EmailAuthProvider.credential and reauthenticateWithCredential
+       ========================================================================= */
+    changePasswordBtn.addEventListener('click', () => {
+      if (!currentUser) { showToast('Sign in first', 'error'); return; }
+      passwordPanel.classList.remove('hidden');
+      passwordPanel.scrollIntoView({ behavior: 'smooth' });
+    });
+
+    cancelPasswordBtn.addEventListener('click', () => passwordPanel.classList.add('hidden'));
+
+    passwordForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      if (!currentUser) { showToast('Sign in first', 'error'); return; }
+      const current = currentPassword.value;
+      const nw = newPassword.value;
+      if (!current || !nw) { showToast('Please fill both fields', 'error'); return; }
+      if (!isValidPassword(nw)) { showToast('New password must be 8+ chars, include 1 uppercase & 1 number', 'error'); return; }
+
+      try {
+        showLoading(true);
+        // re-authenticate
+        const cred = firebase.auth.EmailAuthProvider.credential(currentUser.email, current);
+        await currentUser.reauthenticateWithCredential(cred);
+        // update password
+        await currentUser.updatePassword(nw);
+        showToast('Password updated successfully', 'success');
+        passwordPanel.classList.add('hidden');
+        passwordForm.reset();
+      } catch (err) {
+        console.error(err);
+        showToast(err.message || 'Failed to change password (reauth may be required)', 'error');
+      } finally { showLoading(false); }
+    });
+
+    /* =========================================================================
+       DELETE ACCOUNT (self)
+       - Re-authenticate (prompt for password)
+       - Remove DB profile & photo, then delete auth user
+       - NOTE: If using third-party providers additional steps are needed.
+       ========================================================================= */
+    deleteAccountBtn.addEventListener('click', () => deleteConfirm.classList.remove('hidden'));
+    cancelDeleteSelf.addEventListener('click', () => deleteConfirm.classList.add('hidden'));
+
+    confirmDeleteSelf.addEventListener('click', async () => {
+      if (!currentUser) { showToast('Sign in first', 'error'); return; }
+      if (!confirm('Delete your account permanently? This will remove your profile and sign you out.')) return;
+
+      const password = prompt('To confirm deletion, enter your password:');
+      if (!password) { showToast('Password required to delete account', 'error'); return; }
+
+      try {
+        showLoading(true);
+        // reauthenticate
+        const cred = firebase.auth.EmailAuthProvider.credential(currentUser.email, password);
+        await currentUser.reauthenticateWithCredential(cred);
+
+        // remove photo from storage if present
+        const profileSnap = await db.ref('users/' + currentUser.uid).once('value');
+        const profile = profileSnap.val() || {};
+        if (profile.photoPath) {
+          await storage.ref(profile.photoPath).delete().catch(()=>{});
+        }
+
+        // remove DB profile
+        await db.ref('users/' + currentUser.uid).remove();
+
+        // delete auth user
+        await currentUser.delete();
+
+        showToast('Account deleted. Redirecting…', 'success');
+        deleteConfirm.classList.add('hidden');
+        resetSelfUI();
+      } catch (err) {
+        console.error('delete account err', err);
+        showToast(err.message || 'Failed to delete account', 'error');
+      } finally { showLoading(false); }
+    });
+
+    /* =========================================================================
+       SIGN OUT
+       ========================================================================= */
+    btnSignOut.addEventListener('click', async () => {
+      try {
+        await auth.signOut();
+        showToast('Signed out', 'success');
+        resetSelfUI();
+      } catch (err) {
+        console.error(err);
+        showToast('Sign out failed', 'error');
+      }
+    });
+
+    /* =========================================================================
+       HELPER: small demo sign-in / sign-up if needed for testing
+       - In a complete system you'd have an auth module; for convenience, add a
+         simple quick sign-in UI when no user exists (only for demo).
+       ========================================================================= */
+    // If no user is signed in, show a temporary sign-in/register modal? For this
+    // module we assume auth is handled elsewhere (this is a management module).
+    // You can test by signing in to the app (using the earlier auth demo file)
+    // or manually create users in Realtime DB under /users/ with matching uid.
+
+    /* =========================================================================
+       INITIAL NOTES & SECURITY REMINDERS (console)
+       ========================================================================= */
+    console.info('User Management Module initialized. Replace firebaseConfig and enforce server-side checks for admin operations.');
+
+  </script>
+</body>
+</html>

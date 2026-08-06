@@ -1,0 +1,807 @@
+<!doctype html>
+<html lang="en" class="scroll-smooth">
+<head>
+  <!--
+    LibraSuite — User Dashboard (single-file)
+    Tech: HTML5 + Tailwind CSS CDN + Advanced JavaScript + Firebase (compat)
+    Features:
+      - Welcome Card
+      - Borrowed Books (active & history)
+      - Favourite Books
+      - Reading History
+      - Notifications
+      - Profile (view & edit)
+      - Quick Actions (borrow, return, open reader link)
+      - Dark Mode (persisted)
+      - Responsive layout
+    Notes:
+      - Replace firebaseConfig with your project's values.
+      - Requires Firebase Realtime Database structure (books, borrows, favorites, history, notifications, users).
+      - For production: enforce auth & DB rules on server; this file is a client-side demo.
+  -->
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>LibraSuite — User Dashboard</title>
+
+  <!-- Google font -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+
+  <!-- Tailwind CDN and config -->
+  <script>
+    window.tailwind = { config: { darkMode: 'class' } }
+  </script>
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <style>
+    body { font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial; }
+    .toast-enter { transform: translateY(8px); opacity: 0; }
+    .toast-show  { transform: translateY(0); opacity: 1; transition: all .28s cubic-bezier(.2,.9,.3,1); }
+    .spinner { border: 4px solid rgba(0,0,0,0.08); border-top-color: rgba(37,99,235,1); border-radius: 9999px; width: 36px; height: 36px; animation: spin .9s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg);} }
+    .card-hover:hover { transform: translateY(-6px); transition: transform .18s ease; }
+  </style>
+</head>
+<body class="bg-gray-50 dark:bg-slate-900 text-slate-800 dark:text-slate-100">
+
+<!-- =========================
+     HEADER (top bar with nav, dark mode, auth)
+     ========================= -->
+<header class="sticky top-0 z-40 bg-white/80 dark:bg-slate-900/80 backdrop-blur border-b dark:border-slate-800">
+  <div class="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
+    <div class="flex items-center gap-3">
+      <!-- Logo -->
+      <svg class="w-8 h-8 text-indigo-600" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3 5.5C3 4.119 4.12 3 5.5 3h11C18.88 3 20 4.119 20 5.5V19c0 .553-.447 1-1 1H5.5C4.12 20 3 18.881 3 17.5V5.5Z" stroke="currentColor" stroke-width="1.2"/></svg>
+      <div>
+        <div class="font-semibold">LibraSuite</div>
+        <div class="text-xs text-slate-400 dark:text-slate-400">User Dashboard</div>
+      </div>
+    </div>
+
+    <div class="flex items-center gap-3">
+      <!-- Dark mode toggle -->
+      <button id="darkToggle" class="p-2 rounded-md hover:bg-slate-100 dark:hover:bg-slate-800" title="Toggle dark mode">
+        <svg id="iconMoon" class="w-5 h-5 text-slate-700 dark:text-slate-200" viewBox="0 0 24 24" fill="none"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+
+      <!-- Quick actions dropdown (demo) -->
+      <div class="hidden sm:block text-sm text-slate-500 dark:text-slate-400" id="topGreeting">Hello!</div>
+
+      <!-- Auth buttons / User avatar -->
+      <div id="authArea" class="flex items-center gap-2">
+        <button id="btnLogin" class="px-3 py-1 bg-indigo-600 text-white rounded text-sm">Login</button>
+        <button id="btnRegister" class="px-3 py-1 bg-slate-100 dark:bg-slate-800 rounded text-sm">Register</button>
+      </div>
+    </div>
+  </div>
+</header>
+
+<!-- =========================
+     MAIN LAYOUT (responsive grid)
+     Left column: Welcome, Quick Actions, Profile
+     Right column: Borrowed, Favorites, History, Notifications
+     ========================= -->
+<main class="max-w-7xl mx-auto px-4 py-8 grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+  <!-- LEFT COLUMN -->
+  <section class="lg:col-span-1 space-y-6">
+
+    <!-- =========================
+         Welcome Card
+         ========================= -->
+    <div class="bg-white dark:bg-slate-800 rounded-lg p-5 shadow card-hover">
+      <div class="flex items-center gap-4">
+        <div id="userAvatar" class="w-16 h-16 rounded-full bg-gray-100 dark:bg-slate-700 flex items-center justify-center text-xl font-semibold">U</div>
+        <div>
+          <h2 id="welcomeName" class="text-xl font-semibold">Welcome</h2>
+          <p id="welcomeSub" class="text-sm text-slate-500 dark:text-slate-400">Welcome back to your library.</p>
+        </div>
+      </div>
+
+      <div class="mt-4 grid grid-cols-3 gap-2">
+        <div class="text-center">
+          <div id="countBorrowed" class="text-lg font-bold">0</div>
+          <div class="text-xs text-slate-400">Borrowed</div>
+        </div>
+        <div class="text-center">
+          <div id="countFav" class="text-lg font-bold">0</div>
+          <div class="text-xs text-slate-400">Favourites</div>
+        </div>
+        <div class="text-center">
+          <div id="countHistory" class="text-lg font-bold">0</div>
+          <div class="text-xs text-slate-400">History</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- =========================
+         Quick Actions
+         ========================= -->
+    <div class="bg-white dark:bg-slate-800 rounded-lg p-4 shadow">
+      <h3 class="font-semibold mb-3">Quick Actions</h3>
+      <div class="grid grid-cols-2 gap-2">
+        <button id="actionBrowse" class="px-3 py-2 bg-indigo-600 text-white rounded">Browse Books</button>
+        <button id="actionMyBorrows" class="px-3 py-2 bg-emerald-600 text-white rounded">My Borrows</button>
+        <button id="actionFav" class="px-3 py-2 bg-amber-50 text-amber-700 rounded">Favourites</button>
+        <button id="actionProfile" class="px-3 py-2 bg-slate-100 dark:bg-slate-700 rounded">Edit Profile</button>
+      </div>
+    </div>
+
+    <!-- =========================
+         Profile Panel
+         ========================= -->
+    <div id="profilePanel" class="bg-white dark:bg-slate-800 rounded-lg p-4 shadow">
+      <h3 class="font-semibold mb-2">Profile</h3>
+      <div class="text-sm text-slate-600 dark:text-slate-300" id="profileInfo">
+        Not signed in.
+      </div>
+      <div class="mt-3 flex gap-2">
+        <button id="btnEditProfile" class="px-3 py-2 bg-indigo-600 text-white rounded hidden">Edit</button>
+        <button id="btnLogout" class="px-3 py-2 bg-rose-50 text-rose-600 rounded hidden">Logout</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- RIGHT COLUMN -->
+  <section class="lg:col-span-2 space-y-6">
+
+    <!-- =========================
+         Borrowed Books (Active)
+         ========================= -->
+    <div class="bg-white dark:bg-slate-800 rounded-lg p-4 shadow">
+      <div class="flex items-center justify-between">
+        <h3 class="font-semibold">Borrowed Books</h3>
+        <div class="text-sm text-slate-500 dark:text-slate-400" id="borrowedSummary">Active & overdue</div>
+      </div>
+
+      <div id="borrowedList" class="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <!-- borrowed cards injected here -->
+      </div>
+    </div>
+
+    <!-- =========================
+         Favourite Books
+         ========================= -->
+    <div class="bg-white dark:bg-slate-800 rounded-lg p-4 shadow">
+      <div class="flex items-center justify-between">
+        <h3 class="font-semibold">Favourite Books</h3>
+        <div class="text-sm text-slate-500 dark:text-slate-400" id="favSummary">Your saved books</div>
+      </div>
+
+      <div id="favList" class="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <!-- favourite cards -->
+      </div>
+    </div>
+
+    <!-- =========================
+         Reading History
+         ========================= -->
+    <div class="bg-white dark:bg-slate-800 rounded-lg p-4 shadow">
+      <div class="flex items-center justify-between">
+        <h3 class="font-semibold">Reading History</h3>
+        <div class="text-sm text-slate-500 dark:text-slate-400">Recent reads</div>
+      </div>
+
+      <div id="historyList" class="mt-3 space-y-2">
+        <!-- history items -->
+      </div>
+    </div>
+
+    <!-- =========================
+         Notifications
+         ========================= -->
+    <div class="bg-white dark:bg-slate-800 rounded-lg p-4 shadow">
+      <div class="flex items-center justify-between">
+        <h3 class="font-semibold">Notifications</h3>
+        <button id="clearNotifications" class="text-sm text-slate-500 dark:text-slate-400">Clear all</button>
+      </div>
+
+      <div id="notifications" class="mt-3 space-y-2 text-sm text-slate-600 dark:text-slate-300">
+        <!-- notifications -->
+      </div>
+    </div>
+  </section>
+</main>
+
+<!-- =========================
+     LOGIN / REGISTER MODAL
+     ========================= -->
+<div id="authModal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/40 p-4">
+  <div class="bg-white dark:bg-slate-800 rounded-lg p-6 w-full max-w-md shadow">
+    <h3 id="authTitle" class="text-lg font-semibold mb-3">Sign in</h3>
+
+    <div id="authForms" class="space-y-3">
+      <!-- Email/Password form -->
+      <form id="loginForm" class="space-y-3">
+        <div>
+          <label class="text-sm">Email</label>
+          <input id="loginEmail" type="email" required class="mt-1 block w-full px-3 py-2 rounded border" />
+        </div>
+        <div>
+          <label class="text-sm">Password</label>
+          <input id="loginPassword" type="password" required class="mt-1 block w-full px-3 py-2 rounded border" />
+        </div>
+        <div class="flex items-center gap-2">
+          <button class="px-4 py-2 bg-indigo-600 text-white rounded">Sign in</button>
+          <button id="showRegister" type="button" class="px-3 py-2 bg-slate-100 rounded">Register</button>
+        </div>
+      </form>
+
+      <form id="registerForm" class="space-y-3 hidden">
+        <div>
+          <label class="text-sm">Full name</label>
+          <input id="regName" type="text" class="mt-1 block w-full px-3 py-2 rounded border" />
+        </div>
+        <div>
+          <label class="text-sm">Email</label>
+          <input id="regEmail" type="email" class="mt-1 block w-full px-3 py-2 rounded border" />
+        </div>
+        <div>
+          <label class="text-sm">Password</label>
+          <input id="regPassword" type="password" class="mt-1 block w-full px-3 py-2 rounded border" />
+        </div>
+        <div class="flex items-center gap-2">
+          <button id="registerSubmit" class="px-4 py-2 bg-emerald-600 text-white rounded">Register</button>
+          <button id="showLogin" type="button" class="px-3 py-2 bg-slate-100 rounded">Back to sign in</button>
+        </div>
+      </form>
+
+      <div class="text-xs text-slate-400">Or sign in anonymously for quick demo access.</div>
+      <div class="mt-2">
+        <button id="anonSignIn" class="px-3 py-2 bg-amber-50 text-amber-700 rounded">Continue as Guest</button>
+        <button id="authClose" class="ml-2 px-3 py-2 bg-slate-100 rounded">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- =========================
+     PROFILE EDIT MODAL
+     ========================= -->
+<div id="profileModal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/40 p-4">
+  <div class="bg-white dark:bg-slate-800 rounded-lg p-6 w-full max-w-md shadow">
+    <h3 class="text-lg font-semibold mb-3">Edit Profile</h3>
+    <form id="profileForm" class="space-y-3">
+      <div>
+        <label class="text-sm">Full name</label>
+        <input id="pfName" type="text" class="mt-1 block w-full px-3 py-2 rounded border" />
+      </div>
+      <div>
+        <label class="text-sm">Email (read-only)</label>
+        <input id="pfEmail" type="email" readonly class="mt-1 block w-full px-3 py-2 rounded border bg-slate-50" />
+      </div>
+      <div>
+        <label class="text-sm">Bio</label>
+        <textarea id="pfBio" rows="3" class="mt-1 block w-full px-3 py-2 rounded border"></textarea>
+      </div>
+      <div class="flex items-center gap-2 justify-end">
+        <button id="cancelProfile" type="button" class="px-3 py-2 bg-slate-100 rounded">Cancel</button>
+        <button id="saveProfile" class="px-4 py-2 bg-indigo-600 text-white rounded">Save</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Toasts & loading -->
+<div id="toastContainer" class="fixed bottom-6 right-6 flex flex-col gap-2 z-50"></div>
+<div id="loading" class="fixed inset-0 z-40 hidden items-center justify-center bg-black/20">
+  <div class="bg-white dark:bg-slate-800 rounded-lg p-6 flex items-center gap-4 shadow">
+    <div class="spinner" aria-hidden="true"></div>
+    <div>
+      <div class="font-medium">Working…</div>
+      <div class="text-sm text-slate-500 dark:text-slate-300">Please wait</div>
+    </div>
+  </div>
+</div>
+
+<!-- Firebase (compat) -->
+<script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
+
+<script>
+/* =========================================================================
+   Configuration - REPLACE with your Firebase project credentials
+   Expected Realtime DB nodes:
+     - /books (book metadata)
+     - /borrows (borrow transactions)
+     - /favorites/{uid}
+     - /history/{uid}
+     - /notifications/{uid} (user specific)
+     - /users/{uid} (profile)
+   ========================================================================= */
+const firebaseConfig = {
+  apiKey: "AIzaSyBBxENou0wJoiIALCm27TvDQEKHiGdlVf4",
+      authDomain: "digital-library-3cb1c.firebaseapp.com",
+      databaseURL: "https://digital-library-3cb1c-default-rtdb.asia-southeast1.firebasedatabase.app",
+      projectId: "digital-library-3cb1c",
+      storageBucket: "digital-library-3cb1c.firebasestorage.app",
+      messagingSenderId: "3671589649",
+      appId: "1:3671589649:web:83e9e90236f6a88f07c2b0",
+};
+firebase.initializeApp(firebaseConfig);
+const auth = firebase.auth();
+const db = firebase.database();
+
+/* =========================================================================
+   Element refs
+   ========================================================================= */
+const darkToggle = document.getElementById('darkToggle');
+const topGreeting = document.getElementById('topGreeting');
+const authArea = document.getElementById('authArea');
+const btnLogin = document.getElementById('btnLogin');
+const btnRegister = document.getElementById('btnRegister');
+
+const authModal = document.getElementById('authModal');
+const authTitle = document.getElementById('authTitle');
+const loginForm = document.getElementById('loginForm');
+const registerForm = document.getElementById('registerForm');
+const showRegister = document.getElementById('showRegister');
+const showLogin = document.getElementById('showLogin');
+const loginEmail = document.getElementById('loginEmail');
+const loginPassword = document.getElementById('loginPassword');
+const regName = document.getElementById('regName');
+const regEmail = document.getElementById('regEmail');
+const regPassword = document.getElementById('regPassword');
+const anonSignIn = document.getElementById('anonSignIn');
+const authClose = document.getElementById('authClose');
+
+const profilePanel = document.getElementById('profilePanel');
+const profileInfo = document.getElementById('profileInfo');
+const btnEditProfile = document.getElementById('btnEditProfile');
+const btnLogout = document.getElementById('btnLogout');
+const profileModal = document.getElementById('profileModal');
+const profileForm = document.getElementById('profileForm');
+const pfName = document.getElementById('pfName');
+const pfEmail = document.getElementById('pfEmail');
+const pfBio = document.getElementById('pfBio');
+const cancelProfile = document.getElementById('cancelProfile');
+const saveProfile = document.getElementById('saveProfile');
+
+const userAvatar = document.getElementById('userAvatar');
+const welcomeName = document.getElementById('welcomeName');
+const welcomeSub = document.getElementById('welcomeSub');
+const countBorrowed = document.getElementById('countBorrowed');
+const countFav = document.getElementById('countFav');
+const countHistory = document.getElementById('countHistory');
+
+const borrowedList = document.getElementById('borrowedList');
+const favList = document.getElementById('favList');
+const historyList = document.getElementById('historyList');
+const notificationsEl = document.getElementById('notifications');
+const clearNotifications = document.getElementById('clearNotifications');
+
+const actionBrowse = document.getElementById('actionBrowse');
+const actionMyBorrows = document.getElementById('actionMyBorrows');
+const actionFav = document.getElementById('actionFav');
+const actionProfile = document.getElementById('actionProfile');
+
+const toastContainer = document.getElementById('toastContainer');
+const loading = document.getElementById('loading');
+
+/* =========================================================================
+   Utilities: toasts, loading, escape
+   ========================================================================= */
+function showToast(message, type='success', duration=3500){
+  const el = document.createElement('div');
+  el.className = 'toast-enter px-4 py-2 rounded shadow flex items-center gap-3 max-w-sm ' +
+    (type==='success' ? 'bg-emerald-50 text-emerald-800 border border-emerald-100' :
+     type==='error' ? 'bg-rose-50 text-rose-800 border border-rose-100' :
+     'bg-sky-50 text-sky-800 border border-sky-100');
+  el.innerHTML = `<div class="text-sm">${message}</div>`;
+  toastContainer.appendChild(el);
+  requestAnimationFrame(()=>el.classList.add('toast-show'));
+  setTimeout(()=>{ el.classList.remove('toast-show'); setTimeout(()=>el.remove(),300); }, duration);
+}
+function showLoading(on=true){ loading.classList.toggle('hidden', !on); }
+function escapeHtml(s=''){ return String(s||'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;'); }
+
+/* =========================================================================
+   Dark mode persisted
+   ========================================================================= */
+function applyDarkMode() {
+  const dark = localStorage.getItem('libra-dark') === '1';
+  if(dark) document.documentElement.classList.add('dark');
+  else document.documentElement.classList.remove('dark');
+}
+darkToggle.addEventListener('click', ()=>{
+  const isDark = document.documentElement.classList.toggle('dark');
+  localStorage.setItem('libra-dark', isDark ? '1' : '0');
+});
+applyDarkMode();
+
+/* =========================================================================
+   Authentication UI handlers (open modals, toggle forms)
+   ========================================================================= */
+btnLogin.addEventListener('click', ()=> openAuthModal('login'));
+btnRegister.addEventListener('click', ()=> openAuthModal('register'));
+function openAuthModal(mode='login'){
+  authModal.classList.remove('hidden');
+  if(mode==='login') { loginForm.classList.remove('hidden'); registerForm.classList.add('hidden'); authTitle.textContent='Sign in'; }
+  else { loginForm.classList.add('hidden'); registerForm.classList.remove('hidden'); authTitle.textContent='Register'; }
+}
+authClose.addEventListener('click', ()=> authModal.classList.add('hidden'));
+showRegister.addEventListener('click', ()=> { loginForm.classList.add('hidden'); registerForm.classList.remove('hidden'); authTitle.textContent='Register'; });
+showLogin.addEventListener('click', ()=> { loginForm.classList.remove('hidden'); registerForm.classList.add('hidden'); authTitle.textContent='Sign in'; });
+
+/* =========================================================================
+   Authentication flows: login, register, anonymous
+   ========================================================================= */
+loginForm.addEventListener('submit', async (e)=>{
+  e.preventDefault();
+  const email = loginEmail.value.trim();
+  const pw = loginPassword.value;
+  if(!email || !pw) { showToast('Email & password required','error'); return; }
+  try { showLoading(true); await auth.signInWithEmailAndPassword(email, pw); showToast('Signed in','success'); authModal.classList.add('hidden'); }
+  catch(err){ console.error(err); showToast(err.message || 'Sign in failed','error'); }
+  finally { showLoading(false); }
+});
+
+registerForm.addEventListener('submit', async (e)=>{
+  e.preventDefault();
+  const name = regName.value.trim();
+  const email = regEmail.value.trim();
+  const pw = regPassword.value;
+  if(!name || !email || !pw) { showToast('Complete all fields','error'); return; }
+  try {
+    showLoading(true);
+    const cred = await auth.createUserWithEmailAndPassword(email, pw);
+    // set profile displayName
+    await cred.user.updateProfile({ displayName: name }).catch(()=>{});
+    // create basic user profile in DB
+    await db.ref('users/' + cred.user.uid).set({ name, email, role: 'user', createdAt: Date.now() });
+    showToast('Registered & signed in','success');
+    authModal.classList.add('hidden');
+  } catch(err){ console.error(err); showToast(err.message || 'Registration failed','error'); }
+  finally { showLoading(false); }
+});
+
+anonSignIn.addEventListener('click', async ()=>{
+  try { showLoading(true); await auth.signInAnonymously(); showToast('Signed in anonymously','info'); authModal.classList.add('hidden'); }
+  catch(err){ console.error(err); showToast('Anonymous sign-in failed','error'); }
+  finally { showLoading(false); }
+});
+
+/* =========================================================================
+   Sign out
+   ========================================================================= */
+btnLogout.addEventListener('click', async ()=>{
+  try { await auth.signOut(); showToast('Signed out','info'); }
+  catch(err){ console.error(err); showToast('Sign out failed','error'); }
+});
+
+/* =========================================================================
+   User state & realtime listeners for user-specific data
+   ========================================================================= */
+let currentUser = null;
+let listeners = []; // keep track of DB listeners to detach on sign out
+
+auth.onAuthStateChanged(async (user) => {
+  // detach previous listeners
+  listeners.forEach(fn => fn());
+  listeners = [];
+
+  currentUser = user;
+  if(user){
+    // update UI
+    const name = user.displayName || 'User';
+    welcomeName.textContent = `Welcome, ${name}`;
+    topGreeting.textContent = `Hi, ${name}`;
+    profileInfo.innerHTML = `<div class="font-medium">${escapeHtml(name)}</div><div class="text-xs text-slate-500 dark:text-slate-400">${escapeHtml(user.email || 'Anonymous')}</div>`;
+    userAvatar.textContent = (name.split(' ').map(s=>s[0]).join('').slice(0,2).toUpperCase()) || 'U';
+    btnEditProfile.classList.remove('hidden');
+    btnLogout.classList.remove('hidden');
+    btnLogin.classList.add('hidden');
+    btnRegister.classList.add('hidden');
+
+    // ensure a user profile exists in DB
+    const userRef = db.ref('users/' + user.uid);
+    userRef.once('value').then(snap => {
+      if(!snap.exists()){
+        userRef.set({ name: user.displayName || '', email: user.email || '', role: 'user', createdAt: Date.now() });
+      } else {
+        const p = snap.val() || {};
+        if(p.name) { welcomeName.textContent = `Welcome, ${p.name}`; userAvatar.textContent = (p.name.split(' ').map(s=>s[0]).join('').slice(0,2).toUpperCase()); profileInfo.innerHTML = `<div class="font-medium">${escapeHtml(p.name)}</div><div class="text-xs text-slate-500 dark:text-slate-400">${escapeHtml(p.email||user.email||'')}</div><div class="text-xs text-slate-400 mt-1">${escapeHtml(p.bio || '')}</div>`; }
+      }
+    });
+
+    // listen to favorites for this user
+    const favRef = db.ref('favorites/' + user.uid);
+    const favListener = favRef.on('value', snap => {
+      const fav = snap.val() || {};
+      renderFavorites(fav);
+    });
+    listeners.push(()=> favRef.off('value', favListener));
+
+    // listen to borrows for this user (active & history)
+    const borrowsRef = db.ref('borrows');
+    const borrowsListener = borrowsRef.orderByChild('uid').equalTo(user.uid).on('value', snap => {
+      const recs = snap.val() || {};
+      renderBorrows(recs);
+    });
+    listeners.push(()=> borrowsRef.off('value', borrowsListener));
+
+    // listen to history
+    const historyRef = db.ref('history/' + user.uid);
+    const historyListener = historyRef.on('value', snap => renderHistory(snap.val() || {}));
+    listeners.push(()=> historyRef.off('value', historyListener));
+
+    // listen to notifications
+    const notesRef = db.ref('notifications/' + user.uid);
+    const notesListener = notesRef.on('value', snap => renderNotifications(snap.val() || {}));
+    listeners.push(()=> notesRef.off('value', notesListener));
+  } else {
+    // signed out: show auth buttons
+    welcomeName.textContent = 'Welcome';
+    topGreeting.textContent = 'Hello!';
+    profileInfo.textContent = 'Not signed in.';
+    userAvatar.textContent = 'U';
+    btnEditProfile.classList.add('hidden');
+    btnLogout.classList.add('hidden');
+    btnLogin.classList.remove('hidden');
+    btnRegister.classList.remove('hidden');
+    // clear sections
+    renderFavorites({});
+    renderBorrows({});
+    renderHistory({});
+    renderNotifications({});
+  }
+});
+
+/* =========================================================================
+   Render favorites
+   favorites structure: { bookId: true, ... }
+   We need to fetch book metadata from /books for display.
+   ========================================================================= */
+async function renderFavorites(favObj) {
+  const favIds = Object.keys(favObj || {}).filter(k => favObj[k]);
+  countFav.textContent = favIds.length;
+  // fetch books in parallel
+  const listEl = favList;
+  listEl.innerHTML = '';
+  if(favIds.length === 0) { listEl.innerHTML = '<div class="text-sm text-slate-500">No favourites yet</div>'; return; }
+  // fetch books snapshot for efficiency
+  const booksSnapshot = await db.ref('books').once('value');
+  const books = booksSnapshot.val() || {};
+  favIds.forEach(id => {
+    const b = books[id];
+    const card = document.createElement('div');
+    card.className = 'bg-white dark:bg-slate-800 p-3 rounded shadow text-sm';
+    card.innerHTML = `<div class="font-medium">${escapeHtml(b?.title || 'Unknown')}</div><div class="text-xs text-slate-500">${escapeHtml(b?.author || '')}</div>
+      <div class="mt-2 flex gap-2"><button data-id="${id}" class="btn-open px-2 py-1 rounded bg-indigo-600 text-white text-xs">Open</button><button data-id="${id}" class="btn-remove px-2 py-1 rounded bg-rose-50 text-rose-600 text-xs">Remove</button></div>`;
+    card.querySelector('.btn-open').addEventListener('click', ()=> openReader(b));
+    card.querySelector('.btn-remove').addEventListener('click', async ()=>{
+      if(!currentUser) return showToast('Sign in to remove','error');
+      await db.ref('favorites/' + currentUser.uid + '/' + id).remove();
+      showToast('Removed favourite','info');
+    });
+    listEl.appendChild(card);
+  });
+}
+
+/* =========================================================================
+   Render borrows (active & counts)
+   borrows structure: /borrows/{borrowId} -> { uid, bookId, bookTitle, issueDate, dueDate, returnDate, status, fine }
+   ========================================================================= */
+async function renderBorrows(borrowsObj) {
+  // borrowsObj keyed by borrowId
+  const arr = Object.values(borrowsObj || {}).filter(r=>r);
+  const active = arr.filter(r => r.status === 'borrowed');
+  const history = arr.filter(r => r.status === 'returned');
+  countBorrowed.textContent = active.length;
+  countHistory.textContent = history.length;
+
+  borrowedList.innerHTML = '';
+  if(active.length === 0) { borrowedList.innerHTML = '<div class="text-sm text-slate-500">No active borrows</div>'; return; }
+  active.forEach(r => {
+    const card = document.createElement('div');
+    card.className = 'bg-white dark:bg-slate-800 p-3 rounded shadow text-sm flex items-start justify-between';
+    const dueDate = r.dueDate ? new Date(r.dueDate) : null;
+    const overdue = dueDate && (new Date() > dueDate);
+    card.innerHTML = `<div>
+        <div class="font-medium">${escapeHtml(r.bookTitle || 'Unknown')}</div>
+        <div class="text-xs text-slate-500">${r.issueDate ? new Date(r.issueDate).toLocaleDateString() : '—'} • Due ${dueDate ? dueDate.toLocaleDateString() : '—'}</div>
+      </div>
+      <div class="flex flex-col items-end gap-2">
+        <div class="${overdue ? 'text-rose-600 font-semibold' : 'text-emerald-600'}">${overdue ? 'Overdue' : 'Active'}</div>
+        <div class="flex gap-2">
+          <button data-id="${r.id}" class="btn-return px-2 py-1 bg-emerald-600 text-white rounded text-xs">Return</button>
+          <button data-id="${r.id}" class="btn-extend px-2 py-1 bg-amber-50 text-amber-700 rounded text-xs">Extend</button>
+        </div>
+      </div>`;
+    borrowedList.appendChild(card);
+    card.querySelector('.btn-return').addEventListener('click', ()=> returnBook(r));
+    card.querySelector('.btn-extend').addEventListener('click', ()=> extendBorrow(r));
+  });
+}
+
+/* =========================================================================
+   Return & extend operations (simple client-side demo)
+   - Return will set status='returned' and set returnDate and fine (if overdue)
+   - For book availability, attempt to increment /books/{bookId}/available with transaction
+   ========================================================================= */
+async function returnBook(record){
+  if(!currentUser) { showToast('Sign in to return','error'); return; }
+  try {
+    showLoading(true);
+    // increment book availability by transaction
+    await db.ref('books/' + record.bookId + '/available').transaction(curr => (curr || 0) + 1);
+    const nowISO = new Date().toISOString();
+    // calculate fine if overdue (example: 1.0 per day)
+    const perDay = 1.0;
+    const fine = record.dueDate ? Math.max(0, Math.ceil((new Date() - new Date(record.dueDate)) / (1000*60*60*24)) * perDay) : 0;
+    await db.ref('borrows/' + record.id).update({ status: 'returned', returnDate: nowISO, fine, updatedAt: Date.now() });
+    // push to user's history
+    await db.ref('history/' + currentUser.uid + '/' + record.id).set({ ...record, returnDate: nowISO, fine, status: 'returned' });
+    showToast('Returned — fine: $' + fine.toFixed(2),'success');
+  } catch(err){ console.error(err); showToast('Return failed','error'); }
+  finally{ showLoading(false); }
+}
+
+async function extendBorrow(record){
+  const days = parseInt(prompt('Enter number of days to extend:', '7'), 10);
+  if(isNaN(days) || days <= 0) return showToast('Invalid days','error');
+  try {
+    const newDue = new Date(record.dueDate || Date.now());
+    newDue.setDate(newDue.getDate() + days);
+    await db.ref('borrows/' + record.id).update({ dueDate: newDue.toISOString(), updatedAt: Date.now() });
+    showToast('Extended due date','success');
+  } catch(err){ console.error(err); showToast('Extend failed','error'); }
+}
+
+/* =========================================================================
+   Render reading history
+   history stored at /history/{uid}/{recordId} with metadata
+   ========================================================================= */
+function renderHistory(historyObj){
+  const list = Object.values(historyObj || {}).sort((a,b)=> (b.updatedAt||0) - (a.updatedAt||0));
+  historyList.innerHTML = '';
+  if(list.length === 0) { historyList.innerHTML = '<div class="text-sm text-slate-500">No reading history</div>'; return; }
+  list.slice(0,10).forEach(h => {
+    const el = document.createElement('div');
+    el.className = 'p-3 bg-white dark:bg-slate-800 rounded shadow text-sm';
+    el.innerHTML = `<div class="font-medium">${escapeHtml(h.bookTitle || '')}</div><div class="text-xs text-slate-500">${h.returnDate ? new Date(h.returnDate).toLocaleString() : new Date(h.updatedAt||Date.now()).toLocaleString()}</div>`;
+    historyList.appendChild(el);
+  });
+  countHistory.textContent = list.length;
+}
+
+/* =========================================================================
+   Render notifications (user-specific)
+   notifications stored under /notifications/{uid}/{noteId}: { text, createdAt, read }
+   ========================================================================= */
+function renderNotifications(notifObj){
+  const arr = Object.entries(notifObj || {}).map(([id,n]) => ({ id, ...n })).sort((a,b)=> (b.createdAt||0)-(a.createdAt||0));
+  notificationsEl.innerHTML = '';
+  if(arr.length === 0) { notificationsEl.innerHTML = '<div class="text-sm text-slate-500">No notifications</div>'; return; }
+  arr.slice(0,20).forEach(n => {
+    const d = new Date(n.createdAt || Date.now());
+    const el = document.createElement('div');
+    el.className = 'p-3 bg-white dark:bg-slate-800 rounded shadow text-sm flex items-start justify-between';
+    el.innerHTML = `<div><div>${escapeHtml(n.text)}</div><div class="text-xs text-slate-400 mt-1">${d.toLocaleString()}</div></div>
+      <div><button data-id="${n.id}" class="markRead px-2 py-1 rounded text-xs ${n.read ? 'bg-slate-100' : 'bg-emerald-600 text-white'}">${n.read ? 'Read' : 'Mark'}</button></div>`;
+    el.querySelector('.markRead').addEventListener('click', async ()=>{
+      await db.ref('notifications/' + currentUser.uid + '/' + n.id).update({ read: true });
+      showToast('Marked read','info');
+    });
+    notificationsEl.appendChild(el);
+  });
+  // clear notifications button
+  clearNotifications.onclick = async () => {
+    if(!confirm('Clear all notifications?')) return;
+    const notesRef = db.ref('notifications/' + currentUser.uid);
+    try { showLoading(true); await notesRef.remove(); showToast('Notifications cleared','info'); }
+    catch(err){ console.error(err); showToast('Failed to clear','error'); }
+    finally{ showLoading(false); }
+  };
+}
+
+/* =========================================================================
+   Simple "open reader" demo (could open PDF reader elsewhere)
+   ========================================================================= */
+function openReader(book){
+  alert('Open reader for: ' + (book?.title || 'Unknown') + '\n(Implement PDF viewer separately.)');
+}
+
+/* =========================================================================
+   Quick actions wiring
+   ========================================================================= */
+actionBrowse.addEventListener('click', ()=> showToast('Browse Books — open search or library page','info'));
+actionMyBorrows.addEventListener('click', ()=> { window.scrollTo({ top: 200 }); showToast('Scrolling to borrows','info'); });
+actionFav.addEventListener('click', ()=> showToast('Scrolling to favourites','info'));
+actionProfile.addEventListener('click', ()=> { profileModal.classList.remove('hidden'); pfName.value = auth.currentUser?.displayName || ''; pfEmail.value = auth.currentUser?.email || ''; pfBio.value = ''; });
+
+/* =========================================================================
+   Profile editing
+   ========================================================================= */
+btnEditProfile.addEventListener('click', ()=> { profileModal.classList.remove('hidden'); pfName.value = auth.currentUser?.displayName || ''; pfEmail.value = auth.currentUser?.email || ''; pfBio.value = ''; });
+
+cancelProfile.addEventListener('click', ()=> profileModal.classList.add('hidden'));
+
+saveProfile.addEventListener('click', async (e)=>{
+  e.preventDefault();
+  if(!currentUser) return showToast('Sign in to edit','error');
+  const name = pfName.value.trim();
+  const bio = pfBio.value.trim();
+  try {
+    showLoading(true);
+    await auth.currentUser.updateProfile({ displayName: name }).catch(()=>{});
+    await db.ref('users/' + currentUser.uid).update({ name, bio, updatedAt: Date.now() });
+    showToast('Profile saved','success');
+    profileModal.classList.add('hidden');
+  } catch(err){ console.error(err); showToast('Save failed','error'); }
+  finally { showLoading(false); }
+});
+
+/* =========================================================================
+   Convenience: open auth modal on initial unauthenticated state
+   (optional) - commented out to avoid annoying prompts
+   ========================================================================= */
+// if(!auth.currentUser) openAuthModal('login');
+
+/* =========================================================================
+   Utility: simple borrow creation (quick demo)
+   Creates a borrow record under /borrows and decrements book.available via transaction.
+   In production, this should be server-mediated or require proper rules.
+   ========================================================================= */
+async function quickBorrow(bookId){
+  if(!currentUser) { showToast('Sign in to borrow','error'); return; }
+  const bookSnap = await db.ref('books/' + bookId).once('value');
+  const book = bookSnap.val();
+  if(!book) { showToast('Book not found','error'); return; }
+  if((book.available || 0) < 1) { showToast('No copies available','error'); return; }
+
+  const issue = new Date();
+  const due = new Date(); due.setDate(issue.getDate() + 14); // 2 weeks
+
+  try {
+    showLoading(true);
+    // decrement available via transaction
+    await db.ref('books/' + bookId + '/available').transaction(curr => {
+      if((curr || 0) <= 0) return; // abort
+      return (curr || 0) - 1;
+    });
+    // create borrow record
+    const borrowRef = db.ref('borrows').push();
+    const payload = {
+      id: borrowRef.key,
+      uid: currentUser.uid,
+      bookId,
+      bookTitle: book.title || '',
+      issueDate: issue.toISOString(),
+      dueDate: due.toISOString(),
+      status: 'borrowed',
+      createdAt: Date.now(),
+      updatedAt: Date.now()
+    };
+    await borrowRef.set(payload);
+    // add to user history node
+    await db.ref('history/' + currentUser.uid + '/' + borrowRef.key).set(payload);
+    showToast('Book borrowed — due in 14 days','success');
+  } catch(err){ console.error(err); showToast('Borrow failed','error'); }
+  finally{ showLoading(false); }
+}
+
+/* =========================================================================
+   Example: attach click to possible dynamic open reader buttons (delegated)
+   (left as template)
+   ========================================================================= */
+/* document.addEventListener('click', e => {
+  if(e.target.matches('.open-reader')) { openReaderFor(e.target.dataset.bookId); }
+}); */
+
+/* =========================================================================
+   Small helpers: detach modals on outside click
+   ========================================================================= */
+[authModal, profileModal].forEach(mod => {
+  mod.addEventListener('click', (ev) => { if(ev.target === mod) mod.classList.add('hidden'); });
+});
+
+/* =========================================================================
+   Initial UI state
+   ========================================================================= */
+showToast('Welcome to LibraSuite Dashboard demo', 'info', 2200);
+applyDarkMode();
+
+</script>
+</body>
+</html>

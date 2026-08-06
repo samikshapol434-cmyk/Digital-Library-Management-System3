@@ -1,0 +1,534 @@
+<!doctype html>
+<html lang="en" class="scroll-smooth">
+<head>
+  <!--
+    Search Module (single-file)
+    Tech:
+      - HTML5
+      - Tailwind CSS (CDN)
+      - Advanced JavaScript (ES6+)
+      - Firebase Realtime Database (compat SDK for single-file demo)
+
+    Features implemented:
+      - Live search (debounced)
+      - Filters: Author, Title (via search), Category, Publisher, Language, Availability
+      - Sort options: Newest, Title A→Z, Title Z→A, Author A→Z, Available ↓
+      - Pagination (client-side)
+      - Responsive cards (grid), modern UI
+      - Real-time updates via Firebase listeners
+      - Toasts & loading overlay
+      - Everything is in one HTML file — replace firebaseConfig with your project values
+  -->
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>LibraSuite — Search Module</title>
+
+  <!-- Google font -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+
+  <!-- Tailwind CDN -->
+  <script>
+    window.tailwind = { config: { darkMode: 'class' } }
+  </script>
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <style>
+    :root { --card-gap: 1rem; }
+    body { font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial; }
+    .toast-enter { transform: translateY(8px); opacity: 0; }
+    .toast-show  { transform: translateY(0); opacity: 1; transition: all .28s cubic-bezier(.2,.9,.3,1); }
+    .spinner { border: 4px solid rgba(0,0,0,0.08); border-top-color: rgba(37,99,235,1); border-radius: 9999px; width: 36px; height: 36px; animation: spin .9s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg);} }
+    .card-hover:hover { transform: translateY(-6px); transition: transform .18s ease; }
+    .no-results { min-height: 160px; display:flex; align-items:center; justify-content:center; color:#64748b; }
+  </style>
+</head>
+<body class="bg-gray-50 text-slate-800">
+
+  <!-- =========================
+       HEADER
+       ========================= -->
+  <header class="bg-white shadow sticky top-0 z-40">
+    <div class="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <svg class="w-8 h-8 text-indigo-600" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3 5.5C3 4.119 4.12 3 5.5 3h11C18.88 3 20 4.119 20 5.5V19c0 .553-.447 1-1 1H5.5C4.12 20 3 18.881 3 17.5V5.5Z" stroke="currentColor" stroke-width="1.2"/></svg>
+        <div>
+          <div class="text-lg font-semibold">LibraSuite</div>
+          <div class="text-xs text-slate-400 -mt-1">Search Library</div>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-3">
+        <div id="resultSummary" class="text-sm text-slate-600">Loading…</div>
+      </div>
+    </div>
+  </header>
+
+  <!-- =========================
+       MAIN LAYOUT
+       Left: Filters & Controls
+       Right: Results (cards) + pagination
+       ========================= -->
+  <main class="max-w-7xl mx-auto px-4 py-8 grid grid-cols-1 lg:grid-cols-4 gap-6">
+
+    <!-- LEFT: Filters & controls -->
+    <aside class="lg:col-span-1 space-y-6">
+      <div class="bg-white rounded-lg shadow p-4">
+        <!-- Section comment: Live Search -->
+        <label class="text-sm font-medium">Live Search (Title / Author)</label>
+        <input id="searchInput" type="search" placeholder="Search by title or author..." class="mt-2 block w-full px-3 py-2 rounded border" />
+        <div class="mt-2 flex items-center gap-2">
+          <button id="clearSearch" class="px-3 py-1 rounded bg-slate-100 text-sm hidden">Clear</button>
+        </div>
+      </div>
+
+      <div class="bg-white rounded-lg shadow p-4">
+        <!-- Section comment: Filters -->
+        <h3 class="font-semibold mb-3">Filters</h3>
+
+        <div class="space-y-3">
+          <div>
+            <label class="text-xs text-slate-500">Category</label>
+            <select id="filterCategory" class="mt-1 block w-full px-3 py-2 rounded border">
+              <option value="">All categories</option>
+            </select>
+          </div>
+
+          <div>
+            <label class="text-xs text-slate-500">Publisher</label>
+            <select id="filterPublisher" class="mt-1 block w-full px-3 py-2 rounded border">
+              <option value="">All publishers</option>
+            </select>
+          </div>
+
+          <div>
+            <label class="text-xs text-slate-500">Language</label>
+            <select id="filterLanguage" class="mt-1 block w-full px-3 py-2 rounded border">
+              <option value="">All languages</option>
+            </select>
+          </div>
+
+          <div>
+            <label class="text-xs text-slate-500">Availability</label>
+            <select id="filterAvailability" class="mt-1 block w-full px-3 py-2 rounded border">
+              <option value="">All</option>
+              <option value="available">Available</option>
+              <option value="unavailable">Out of stock</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <div class="bg-white rounded-lg shadow p-4">
+        <!-- Section comment: Sort & Pagination settings -->
+        <h3 class="font-semibold mb-3">Sort & Page</h3>
+        <div>
+          <label class="text-xs text-slate-500">Sort</label>
+          <select id="sortSelect" class="mt-1 block w-full px-3 py-2 rounded border">
+            <option value="newest">Newest</option>
+            <option value="title-asc">Title A → Z</option>
+            <option value="title-desc">Title Z → A</option>
+            <option value="author-asc">Author A → Z</option>
+            <option value="available-desc">Most available</option>
+          </select>
+        </div>
+
+        <div class="mt-3">
+          <label class="text-xs text-slate-500">Page size</label>
+          <select id="pageSize" class="mt-1 block w-full px-3 py-2 rounded border">
+            <option value="6">6 / page</option>
+            <option value="12" selected>12 / page</option>
+            <option value="24">24 / page</option>
+          </select>
+        </div>
+
+        <div class="mt-3 text-xs text-slate-400">
+          Tip: Combine filters with search for precise results.
+        </div>
+      </div>
+
+      <div class="bg-white rounded-lg shadow p-4 text-sm text-slate-600">
+        <!-- Section comment: Quick stats -->
+        <div><strong id="totalBooks">0</strong> books total</div>
+        <div class="mt-1 text-xs text-slate-400">Realtime data from Firebase</div>
+      </div>
+    </aside>
+
+    <!-- RIGHT: Results -->
+    <section class="lg:col-span-3 space-y-6">
+      <div class="bg-white rounded-lg shadow p-4">
+        <!-- Section comment: Results grid -->
+        <div id="resultsGrid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          <!-- JS injects responsive cards here -->
+        </div>
+
+        <!-- No results placeholder -->
+        <div id="noResults" class="no-results text-center text-sm text-slate-500 hidden">
+          No results found. Try clearing filters or search.
+        </div>
+
+        <!-- Pagination controls -->
+        <div class="mt-4 flex items-center justify-between">
+          <div id="pageInfo" class="text-sm text-slate-500">Showing 0 of 0</div>
+          <div class="flex items-center gap-2">
+            <button id="prevBtn" class="px-3 py-1 rounded bg-slate-100">Prev</button>
+            <div id="pageButtons" class="flex items-center gap-1"></div>
+            <button id="nextBtn" class="px-3 py-1 rounded bg-slate-100">Next</button>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Toasts & Loading -->
+  <div id="toastContainer" class="fixed bottom-6 right-6 flex flex-col gap-2 z-50"></div>
+  <div id="loadingOverlay" class="fixed inset-0 z-40 hidden items-center justify-center bg-black/20">
+    <div class="bg-white rounded-lg p-6 flex items-center gap-4 shadow">
+      <div class="spinner" aria-hidden="true"></div>
+      <div>
+        <div class="font-medium">Loading…</div>
+        <div class="text-xs text-slate-500">Fetching library data</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Firebase compat SDK (Realtime Database) -->
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
+
+  <script>
+    /* =========================================================================
+       CONFIG - Replace with your Firebase project's config
+    ========================================================================= */
+    const firebaseConfig = {
+      apiKey: "AIzaSyBBxENou0wJoiIALCm27TvDQEKHiGdlVf4",
+      authDomain: "digital-library-3cb1c.firebaseapp.com",
+      databaseURL: "https://digital-library-3cb1c-default-rtdb.asia-southeast1.firebasedatabase.app",
+      projectId: "digital-library-3cb1c",
+      storageBucket: "digital-library-3cb1c.firebasestorage.app",
+      messagingSenderId: "3671589649",
+      appId: "1:3671589649:web:83e9e90236f6a88f07c2b0",
+    };
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+
+    /* =========================================================================
+       DOM refs
+    ========================================================================= */
+    const searchInput = document.getElementById('searchInput');
+    const clearSearch = document.getElementById('clearSearch');
+    const filterCategory = document.getElementById('filterCategory');
+    const filterPublisher = document.getElementById('filterPublisher');
+    const filterLanguage = document.getElementById('filterLanguage');
+    const filterAvailability = document.getElementById('filterAvailability');
+    const sortSelect = document.getElementById('sortSelect');
+    const pageSizeSelect = document.getElementById('pageSize');
+    const resultsGrid = document.getElementById('resultsGrid');
+    const noResults = document.getElementById('noResults');
+    const pageInfo = document.getElementById('pageInfo');
+    const pageButtons = document.getElementById('pageButtons');
+    const prevBtn = document.getElementById('prevBtn');
+    const nextBtn = document.getElementById('nextBtn');
+    const resultSummary = document.getElementById('resultSummary');
+    const totalBooksEl = document.getElementById('totalBooks');
+
+    const toastContainer = document.getElementById('toastContainer');
+    const loadingOverlay = document.getElementById('loadingOverlay');
+
+    /* =========================================================================
+       State
+    ========================================================================= */
+    const booksRef = db.ref('books'); // /books/{id} expected structure: { title, author, category, publisher, language, quantity, available, coverURL, createdAt }
+    let booksCache = {};         // raw data snapshot
+    let derivedList = [];        // filtered + sorted array of {id, ...book}
+    let filters = {
+      q: '',
+      category: '',
+      publisher: '',
+      language: '',
+      availability: ''
+    };
+    let sortBy = 'newest';
+    let pageSize = Number(pageSizeSelect.value) || 12;
+    let currentPage = 1;
+
+    /* =========================================================================
+       Utilities: toasts, loading, escape, debounce
+    ========================================================================= */
+    function showLoading(on = true) { loadingOverlay.classList.toggle('hidden', !on); }
+    function showToast(msg, type='success', dur=3200) {
+      const el = document.createElement('div');
+      el.className = 'toast-enter px-4 py-2 rounded shadow flex items-center gap-3 max-w-sm ' +
+        (type === 'success' ? 'bg-emerald-50 text-emerald-800 border border-emerald-100' : type === 'error' ? 'bg-rose-50 text-rose-800 border border-rose-100' : 'bg-sky-50 text-sky-800 border border-sky-100');
+      el.innerHTML = `<div class="text-sm">${msg}</div>`;
+      toastContainer.appendChild(el);
+      requestAnimationFrame(() => el.classList.add('toast-show'));
+      setTimeout(() => { el.classList.remove('toast-show'); setTimeout(()=>el.remove(), 300); }, dur);
+    }
+    function escapeHtml(s='') {
+      return String(s).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'", '&#039;');
+    }
+    function debounce(fn, ms=200) {
+      let t;
+      return (...args) => { clearTimeout(t); t = setTimeout(()=>fn(...args), ms); };
+    }
+
+    /* =========================================================================
+       Realtime listener: fetch books and update filters/options
+    ========================================================================= */
+    showLoading(true);
+    booksRef.on('value', snap => {
+      booksCache = snap.val() || {};
+      buildFilterOptions();
+      applyFiltersAndRender();
+      showLoading(false);
+      showToast('Library updated (realtime)', 'info', 900);
+    }, err => {
+      console.error('booksRef', err);
+      showLoading(false);
+      showToast('Failed to read books: ' + (err.message || ''), 'error');
+    });
+
+    /* =========================================================================
+       Build dynamic filter dropdown options (authors/publishers/categories/languages)
+    ========================================================================= */
+    function buildFilterOptions() {
+      const authors = new Set();
+      const categories = new Set();
+      const publishers = new Set();
+      const languages = new Set();
+
+      Object.entries(booksCache || {}).forEach(([id, b]) => {
+        if (!b) return;
+        if (b.author) authors.add(b.author);
+        if (b.category) categories.add(b.category);
+        if (b.publisher) publishers.add(b.publisher);
+        if (b.language) languages.add(b.language);
+      });
+
+      // populate selects preserving previous selection
+      const prevCat = filterCategory.value;
+      filterCategory.innerHTML = '<option value="">All categories</option>';
+      Array.from(categories).sort().forEach(c => {
+        const o = document.createElement('option'); o.value = c; o.textContent = c; filterCategory.appendChild(o);
+      });
+      if (prevCat) filterCategory.value = prevCat;
+
+      const prevPub = filterPublisher.value;
+      filterPublisher.innerHTML = '<option value="">All publishers</option>';
+      Array.from(publishers).sort().forEach(p => {
+        const o = document.createElement('option'); o.value = p; o.textContent = p; filterPublisher.appendChild(o);
+      });
+      if (prevPub) filterPublisher.value = prevPub;
+
+      const prevLang = filterLanguage.value;
+      filterLanguage.innerHTML = '<option value="">All languages</option>';
+      Array.from(languages).sort().forEach(l => {
+        const o = document.createElement('option'); o.value = l; o.textContent = l; filterLanguage.appendChild(o);
+      });
+      if (prevLang) filterLanguage.value = prevLang;
+
+      // total books
+      totalBooksEl.textContent = String(Object.keys(booksCache || {}).length);
+    }
+
+    /* =========================================================================
+       Apply filters, sorting and render page
+    ========================================================================= */
+    function applyFiltersAndRender() {
+      // compute derivedList
+      const q = (filters.q || '').toLowerCase();
+      derivedList = Object.entries(booksCache || {}).map(([id,b]) => ({ id, ...b }))
+        .filter(b => {
+          if (!b) return false;
+          // availability filter
+          if (filters.availability) {
+            const av = Number(b.available || 0) > 0 ? 'available' : 'unavailable';
+            if (filters.availability !== av) return false;
+          }
+          if (filters.category && String(b.category || '') !== filters.category) return false;
+          if (filters.publisher && String(b.publisher || '') !== filters.publisher) return false;
+          if (filters.language && String(b.language || '') !== filters.language) return false;
+          // search across title, author, ISBN maybe
+          if (q) {
+            const hay = `${b.title||''} ${b.author||''} ${b.category||''} ${b.publisher||''} ${b.language||''}`.toLowerCase();
+            if (!hay.includes(q)) return false;
+          }
+          return true;
+        });
+
+      // sorting
+      derivedList.sort((a,b) => {
+        if (sortBy === 'newest') {
+          return (b.createdAt||0) - (a.createdAt||0);
+        } else if (sortBy === 'title-asc') {
+          return (a.title||'').localeCompare(b.title||'');
+        } else if (sortBy === 'title-desc') {
+          return (b.title||'').localeCompare(a.title||'');
+        } else if (sortBy === 'author-asc') {
+          return (a.author||'').localeCompare(b.author||'');
+        } else if (sortBy === 'available-desc') {
+          return (Number(b.available||0)) - (Number(a.available||0));
+        }
+        return 0;
+      });
+
+      // reset page if out of range
+      const totalPages = Math.max(1, Math.ceil(derivedList.length / pageSize));
+      if (currentPage > totalPages) currentPage = totalPages;
+
+      renderPage();
+      updateSummary();
+    }
+
+    function updateSummary() {
+      resultSummary.textContent = `${derivedList.length} results`;
+    }
+
+    /* =========================================================================
+       Rendering page & pagination
+    ========================================================================= */
+    function renderPage() {
+      const total = derivedList.length;
+      if (total === 0) {
+        resultsGrid.innerHTML = '';
+        noResults.classList.remove('hidden');
+        pageInfo.textContent = '0 results';
+        pageButtons.innerHTML = '';
+        return;
+      } else {
+        noResults.classList.add('hidden');
+      }
+
+      pageSize = Number(pageSizeSelect.value) || 12;
+      const totalPages = Math.max(1, Math.ceil(total / pageSize));
+      if (currentPage > totalPages) currentPage = totalPages;
+      const start = (currentPage - 1) * pageSize;
+      const end = Math.min(total, start + pageSize);
+      const pageItems = derivedList.slice(start, end);
+
+      // render cards
+      resultsGrid.innerHTML = '';
+      pageItems.forEach(b => resultsGrid.appendChild(createCard(b)));
+
+      // page info
+      pageInfo.textContent = `Showing ${start+1} - ${end} of ${total}`;
+
+      // render page buttons (condensed)
+      renderPageButtons(totalPages);
+    }
+
+    function renderPageButtons(totalPages) {
+      pageButtons.innerHTML = '';
+      const max = 7;
+      let start = Math.max(1, currentPage - Math.floor(max/2));
+      let end = Math.min(totalPages, start + max - 1);
+      if (end - start < max - 1) start = Math.max(1, end - max + 1);
+      for (let i = start; i <= end; i++) {
+        const btn = document.createElement('button');
+        btn.className = `px-3 py-1 rounded ${i === currentPage ? 'bg-indigo-600 text-white' : 'bg-slate-100'}`;
+        btn.textContent = i;
+        btn.addEventListener('click', () => { currentPage = i; renderPage(); });
+        pageButtons.appendChild(btn);
+      }
+    }
+
+    prevBtn.addEventListener('click', () => { if (currentPage > 1) { currentPage--; renderPage(); } });
+    nextBtn.addEventListener('click', () => {
+      const total = derivedList.length;
+      const totalPages = Math.max(1, Math.ceil(total / pageSize));
+      if (currentPage < totalPages) { currentPage++; renderPage(); }
+    });
+
+    /* =========================================================================
+       Card creation: responsive modern card with metadata & actions
+    ========================================================================= */
+    function createCard(book) {
+      const el = document.createElement('article');
+      el.className = 'bg-white rounded-lg shadow p-3 flex flex-col card-hover';
+      el.innerHTML = `
+        <div class="relative h-44 rounded overflow-hidden bg-gray-100">
+          ${book.coverURL ? `<img src="${escapeHtml(book.coverURL)}" class="w-full h-full object-cover" alt="${escapeHtml(book.title)}">` :
+          `<div class="w-full h-full flex items-center justify-center text-sm text-slate-500">No cover</div>`}
+          <div class="absolute left-2 top-2 px-2 py-1 bg-white/90 rounded text-xs">${escapeHtml(book.category||'')}</div>
+        </div>
+        <div class="mt-3 flex-1">
+          <div class="font-semibold text-sm leading-snug">${escapeHtml(book.title)}</div>
+          <div class="text-xs text-slate-500 mt-1">${escapeHtml(book.author||'Unknown')}</div>
+          <div class="text-xs text-slate-400 mt-2">${escapeHtml(book.publisher||'')} • ${escapeHtml(book.language||'')}</div>
+        </div>
+        <div class="mt-3 flex items-center justify-between">
+          <div class="text-sm text-slate-700">${Number(book.available||0) > 0 ? `<span class="text-emerald-600 font-medium">${book.available}</span> available` : `<span class="text-rose-600 font-medium">Out</span>`}</div>
+          <div class="flex items-center gap-2">
+            <button data-id="${book.id}" class="viewBtn px-3 py-1 bg-slate-100 rounded text-sm">View</button>
+            <button data-id="${book.id}" class="favBtn px-3 py-1 bg-amber-50 rounded text-sm">♡</button>
+          </div>
+        </div>
+      `;
+
+      // view action (opens a simple details modal / alert)
+      el.querySelector('.viewBtn').addEventListener('click', () => {
+        const details = [
+          `Title: ${book.title}`,
+          `Author: ${book.author || '—'}`,
+          `Publisher: ${book.publisher || '—'}`,
+          `Category: ${book.category || '—'}`,
+          `Language: ${book.language || '—'}`,
+          `Available: ${book.available || 0}`,
+          `Quantity: ${book.quantity || 0}`
+        ].join('\n');
+        alert(details);
+      });
+
+      // fav button toggles design-only state (demo)
+      el.querySelector('.favBtn').addEventListener('click', (ev) => {
+        ev.currentTarget.textContent = ev.currentTarget.textContent === '♡' ? '♥' : '♡';
+        showToast('Toggled favourite (client-only demo)', 'info');
+      });
+
+      return el;
+    }
+
+    /* =========================================================================
+       Hook up controls: live search, filters, sort, page size
+    ========================================================================= */
+    const applyFiltersDebounced = debounce(() => {
+      currentPage = 1;
+      filters.q = searchInput.value.trim();
+      applyFiltersAndRender();
+    }, 250);
+
+    searchInput.addEventListener('input', () => {
+      clearSearch.classList.toggle('hidden', !searchInput.value);
+      applyFiltersDebounced();
+    });
+    clearSearch.addEventListener('click', () => { searchInput.value = ''; clearSearch.classList.add('hidden'); filters.q = ''; applyFiltersAndRender(); });
+
+    filterCategory.addEventListener('change', () => { filters.category = filterCategory.value; currentPage = 1; applyFiltersAndRender(); });
+    filterPublisher.addEventListener('change', () => { filters.publisher = filterPublisher.value; currentPage = 1; applyFiltersAndRender(); });
+    filterLanguage.addEventListener('change', () => { filters.language = filterLanguage.value; currentPage = 1; applyFiltersAndRender(); });
+    filterAvailability.addEventListener('change', () => { filters.availability = filterAvailability.value; currentPage = 1; applyFiltersAndRender(); });
+
+    sortSelect.addEventListener('change', () => { sortBy = sortSelect.value; currentPage = 1; applyFiltersAndRender(); });
+    pageSizeSelect.addEventListener('change', () => { pageSize = Number(pageSizeSelect.value); currentPage = 1; applyFiltersAndRender(); });
+
+    /* =========================================================================
+       Initial actions
+    ========================================================================= */
+    // set defaults
+    filters = { q: '', category: '', publisher: '', language: '', availability: '' };
+    sortBy = sortSelect.value;
+    pageSize = Number(pageSizeSelect.value) || 12;
+    currentPage = 1;
+
+    // initial UI text
+    resultSummary.textContent = '0 results';
+
+    // small accessibility: keyboard Enter on search does immediate apply
+    searchInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); filters.q = searchInput.value.trim(); applyFiltersAndRender(); } });
+
+    // quick info on load
+    console.info('Search Module loaded. Replace firebaseConfig with your project values and secure your DB rules for production.');
+  </script>
+</body>
+</html>

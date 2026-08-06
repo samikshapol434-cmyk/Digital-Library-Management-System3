@@ -1,0 +1,761 @@
+<!doctype html>
+<html lang="en" class="scroll-smooth">
+<head>
+  <!--
+    Book Management Module
+    - Single HTML file using Tailwind CSS CDN + Firebase (Realtime DB + Storage)
+    - Features: Add/Edit/Delete/View book, Image upload, Search, Filter, Pagination, Responsive table/cards, Toasts
+    - Replace the firebaseConfig object below with your Firebase project's credentials.
+    - For production: Harden Realtime DB & Storage security rules to prevent unauthorized modification.
+  -->
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>LibraSuite — Book Management</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+
+  <!-- Tailwind CDN (for demo/prototype) -->
+  <script>
+    window.tailwind = { config: { darkMode: 'class' } }
+  </script>
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <style>
+    body { font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial; }
+    .toast-enter { transform: translateY(8px); opacity:0; }
+    .toast-show { transform: translateY(0); opacity:1; transition: all .28s cubic-bezier(.2,.9,.3,1); }
+    .spinner { border: 4px solid rgba(0,0,0,0.08); border-top-color: rgba(37,99,235,1); border-radius:9999px; width:36px; height:36px; animation: spin .9s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    /* small responsive tweaks */
+    .table-responsive { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  </style>
+</head>
+<body class="bg-gray-50 text-slate-800">
+
+  <!-- HEADER -->
+  <header class="bg-white shadow sticky top-0 z-40">
+    <div class="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <svg class="w-8 h-8 text-indigo-600" viewBox="0 0 24 24" fill="none"><path d="M3 5.5C3 4.119 4.12 3 5.5 3h11C18.88 3 20 4.119 20 5.5V19c0 .553-.447 1-1 1H5.5C4.12 20 3 18.881 3 17.5V5.5Z" stroke="currentColor" stroke-width="1.2"/></svg>
+        <div>
+          <div class="text-lg font-semibold">LibraSuite</div>
+          <div class="text-xs text-slate-400 -mt-1">Book Management</div>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-3">
+        <div id="statsSummary" class="text-sm text-slate-600">Loading stats...</div>
+      </div>
+    </div>
+  </header>
+
+  <!-- MAIN LAYOUT: Left = Form (Add/Edit/View), Right = Table/Grid + Controls -->
+  <main class="max-w-7xl mx-auto px-4 py-8 grid grid-cols-1 lg:grid-cols-4 gap-6">
+
+    <!-- LEFT COLUMN: Add / Edit Book Form -->
+    <section class="lg:col-span-1 space-y-6">
+
+      <!-- ADD / EDIT CARD -->
+      <div class="bg-white rounded-lg shadow p-6">
+        <!-- Section comment: Add/Edit Book -->
+        <h2 id="formTitle" class="text-lg font-semibold mb-2">Add Book</h2>
+        <form id="bookForm" class="space-y-3">
+          <!-- Hidden field for editing -->
+          <input type="hidden" id="bookId" />
+
+          <div>
+            <label class="text-sm">Title <span class="text-rose-600">*</span></label>
+            <input id="title" required type="text" class="mt-1 block w-full px-3 py-2 rounded border" placeholder="Book title">
+          </div>
+
+          <div>
+            <label class="text-sm">Author <span class="text-rose-600">*</span></label>
+            <input id="author" required type="text" class="mt-1 block w-full px-3 py-2 rounded border" placeholder="Author name(s)">
+          </div>
+
+          <div>
+            <label class="text-sm">Publisher</label>
+            <input id="publisher" type="text" class="mt-1 block w-full px-3 py-2 rounded border" placeholder="Publisher">
+          </div>
+
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="text-sm">ISBN</label>
+              <input id="isbn" type="text" class="mt-1 block w-full px-3 py-2 rounded border" placeholder="ISBN">
+            </div>
+            <div>
+              <label class="text-sm">Language</label>
+              <input id="language" type="text" class="mt-1 block w-full px-3 py-2 rounded border" placeholder="e.g., English">
+            </div>
+          </div>
+
+          <div>
+            <label class="text-sm">Category</label>
+            <input id="category" type="text" class="mt-1 block w-full px-3 py-2 rounded border" placeholder="e.g., Science, Fiction">
+          </div>
+
+          <div>
+            <label class="text-sm">Description</label>
+            <textarea id="description" rows="3" class="mt-1 block w-full px-3 py-2 rounded border" placeholder="Short description"></textarea>
+          </div>
+
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="text-sm">Quantity <span class="text-rose-600">*</span></label>
+              <input id="quantity" required type="number" min="0" value="1" class="mt-1 block w-full px-3 py-2 rounded border">
+            </div>
+            <div>
+              <label class="text-sm">Available</label>
+              <input id="available" type="number" min="0" value="1" class="mt-1 block w-full px-3 py-2 rounded border">
+            </div>
+          </div>
+
+          <div>
+            <label class="text-sm">Book Image</label>
+            <input id="bookImage" type="file" accept="image/*" class="mt-1 block w-full text-sm" />
+            <div id="preview" class="mt-2 w-full h-36 bg-gray-100 rounded flex items-center justify-center overflow-hidden text-sm text-slate-500">No image selected</div>
+          </div>
+
+          <div class="flex items-center gap-3">
+            <button id="saveBtn" type="submit" class="px-4 py-2 bg-indigo-600 text-white rounded">Save Book</button>
+            <button id="resetBtn" type="button" class="px-4 py-2 bg-slate-100 rounded">Reset</button>
+            <button id="cancelEditBtn" type="button" class="px-4 py-2 bg-amber-50 text-amber-700 rounded hidden">Cancel Edit</button>
+          </div>
+        </form>
+      </div>
+
+      <!-- VIEW BOOK PANEL (selected book) -->
+      <div id="viewPanel" class="bg-white rounded-lg shadow p-6 hidden">
+        <!-- Section comment: View Book -->
+        <h3 class="text-lg font-semibold mb-2">View Book</h3>
+        <div id="viewImage" class="w-full h-44 bg-gray-100 rounded overflow-hidden flex items-center justify-center text-slate-500 mb-3">No image</div>
+        <div class="space-y-1">
+          <div class="text-sm"><span class="font-medium">Title:</span> <span id="vTitle"></span></div>
+          <div class="text-sm"><span class="font-medium">Author:</span> <span id="vAuthor"></span></div>
+          <div class="text-sm"><span class="font-medium">Publisher:</span> <span id="vPublisher"></span></div>
+          <div class="text-sm"><span class="font-medium">ISBN:</span> <span id="vIsbn"></span></div>
+          <div class="text-sm"><span class="font-medium">Category:</span> <span id="vCategory"></span></div>
+          <div class="text-sm"><span class="font-medium">Language:</span> <span id="vLanguage"></span></div>
+          <div class="text-sm"><span class="font-medium">Quantity:</span> <span id="vQuantity"></span></div>
+          <div class="text-sm"><span class="font-medium">Available:</span> <span id="vAvailable"></span></div>
+          <div class="text-sm"><span class="font-medium">Description:</span> <p id="vDescription" class="inline"></p></div>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- RIGHT COLUMNS: Controls, Filters, Table/Grid -->
+    <section class="lg:col-span-3 space-y-6">
+
+      <!-- CONTROLS: Search, Filters, Page size -->
+      <div class="bg-white rounded-lg shadow p-4 flex flex-wrap items-center gap-3 justify-between">
+        <!-- Section comment: Search & Filters -->
+        <div class="flex items-center gap-3 flex-1 min-w-0">
+          <input id="search" type="search" placeholder="Search by title, author, ISBN, category..." class="flex-1 px-4 py-2 rounded border" />
+          <button id="clearSearch" class="px-3 py-2 bg-slate-100 rounded hidden">Clear</button>
+        </div>
+
+        <div class="flex items-center gap-3">
+          <select id="filterCategory" class="px-3 py-2 rounded border text-sm">
+            <option value="">All categories</option>
+          </select>
+          <select id="filterLanguage" class="px-3 py-2 rounded border text-sm">
+            <option value="">All languages</option>
+          </select>
+          <select id="filterAvailability" class="px-3 py-2 rounded border text-sm">
+            <option value="">All</option>
+            <option value="available">Available only</option>
+            <option value="none">Out of stock</option>
+          </select>
+          <select id="pageSize" class="px-3 py-2 rounded border text-sm">
+            <option value="5">5 / page</option>
+            <option value="10" selected>10 / page</option>
+            <option value="20">20 / page</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- TABLE (desktop) & CARDS (mobile) -->
+      <div class="bg-white rounded-lg shadow p-4">
+        <div id="booksContainer">
+          <!-- Table for larger screens -->
+          <div class="table-responsive hidden md:block">
+            <table class="min-w-full divide-y divide-slate-100">
+              <thead class="bg-slate-50">
+                <tr>
+                  <th class="px-4 py-2 text-left text-xs">Image</th>
+                  <th class="px-4 py-2 text-left text-xs">Title</th>
+                  <th class="px-4 py-2 text-left text-xs">Author</th>
+                  <th class="px-4 py-2 text-left text-xs">Category</th>
+                  <th class="px-4 py-2 text-left text-xs">Language</th>
+                  <th class="px-4 py-2 text-left text-xs">ISBN</th>
+                  <th class="px-4 py-2 text-left text-xs">Qty</th>
+                  <th class="px-4 py-2 text-left text-xs">Available</th>
+                  <th class="px-4 py-2 text-left text-xs">Actions</th>
+                </tr>
+              </thead>
+              <tbody id="booksTableBody" class="bg-white divide-y divide-slate-100">
+                <!-- JS inject rows -->
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Cards for small screens -->
+          <div id="booksCards" class="grid grid-cols-1 gap-4 md:hidden">
+            <!-- JS inject cards -->
+          </div>
+        </div>
+
+        <!-- PAGINATION -->
+        <div class="mt-4 flex items-center justify-between">
+          <div id="paginationInfo" class="text-sm text-slate-500">Showing 0 - 0 of 0</div>
+          <div class="flex items-center gap-2">
+            <button id="prevPage" class="px-3 py-1 rounded bg-slate-100">Prev</button>
+            <div id="pageNumbers" class="flex items-center gap-1"></div>
+            <button id="nextPage" class="px-3 py-1 rounded bg-slate-100">Next</button>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- FOOTER -->
+  <footer class="max-w-7xl mx-auto px-4 py-6 text-sm text-slate-400">
+    <div>Tip: Protect these endpoints with Firebase security rules in production; this demo uses client-side operations for illustration.</div>
+  </footer>
+
+  <!-- TOASTS & LOADING -->
+  <div id="toastContainer" class="fixed bottom-6 right-6 flex flex-col gap-2 z-50"></div>
+  <div id="loadingOverlay" class="fixed inset-0 z-40 hidden items-center justify-center bg-black/20">
+    <div class="bg-white rounded-lg p-6 flex items-center gap-4 shadow">
+      <div class="spinner" aria-hidden="true"></div>
+      <div>
+        <div class="font-medium">Working…</div>
+        <div class="text-xs text-slate-500">Please wait</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- FIREBASE (compat SDKs for single-file) -->
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-storage-compat.js"></script>
+
+  <script>
+    /* =========================================================================
+       CONFIG: Replace these with your Firebase project's values
+       ========================================================================= */
+    const firebaseConfig = {
+      apiKey: "AIzaSyBBxENou0wJoiIALCm27TvDQEKHiGdlVf4",
+      authDomain: "digital-library-3cb1c.firebaseapp.com",
+      databaseURL: "https://digital-library-3cb1c-default-rtdb.asia-southeast1.firebasedatabase.app",
+      projectId: "digital-library-3cb1c",
+      storageBucket: "digital-library-3cb1c.firebasestorage.app",
+      messagingSenderId: "3671589649",
+      appId: "1:3671589649:web:83e9e90236f6a88f07c2b0",
+    };
+
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+    const storage = firebase.storage();
+
+    /* =========================================================================
+       DOM REFS
+       ========================================================================= */
+    const bookForm = document.getElementById('bookForm');
+    const bookIdInput = document.getElementById('bookId');
+    const formTitle = document.getElementById('formTitle');
+    const titleInput = document.getElementById('title');
+    const authorInput = document.getElementById('author');
+    const publisherInput = document.getElementById('publisher');
+    const isbnInput = document.getElementById('isbn');
+    const categoryInput = document.getElementById('category');
+    const languageInput = document.getElementById('language');
+    const descriptionInput = document.getElementById('description');
+    const quantityInput = document.getElementById('quantity');
+    const availableInput = document.getElementById('available');
+    const bookImageInput = document.getElementById('bookImage');
+    const preview = document.getElementById('preview');
+    const saveBtn = document.getElementById('saveBtn');
+    const resetBtn = document.getElementById('resetBtn');
+    const cancelEditBtn = document.getElementById('cancelEditBtn');
+
+    const viewPanel = document.getElementById('viewPanel');
+    const vTitle = document.getElementById('vTitle');
+    const vAuthor = document.getElementById('vAuthor');
+    const vPublisher = document.getElementById('vPublisher');
+    const vIsbn = document.getElementById('vIsbn');
+    const vCategory = document.getElementById('vCategory');
+    const vLanguage = document.getElementById('vLanguage');
+    const vQuantity = document.getElementById('vQuantity');
+    const vAvailable = document.getElementById('vAvailable');
+    const vDescription = document.getElementById('vDescription');
+    const viewImage = document.getElementById('viewImage');
+
+    const searchInput = document.getElementById('search');
+    const clearSearch = document.getElementById('clearSearch');
+    const filterCategory = document.getElementById('filterCategory');
+    const filterLanguage = document.getElementById('filterLanguage');
+    const filterAvailability = document.getElementById('filterAvailability');
+    const pageSizeSelect = document.getElementById('pageSize');
+
+    const booksTableBody = document.getElementById('booksTableBody');
+    const booksCards = document.getElementById('booksCards');
+    const paginationInfo = document.getElementById('paginationInfo');
+    const prevPageBtn = document.getElementById('prevPage');
+    const nextPageBtn = document.getElementById('nextPage');
+    const pageNumbers = document.getElementById('pageNumbers');
+    const statsSummary = document.getElementById('statsSummary');
+
+    const toastContainer = document.getElementById('toastContainer');
+    const loadingOverlay = document.getElementById('loadingOverlay');
+
+    /* =========================================================================
+       STATE
+       ========================================================================= */
+    let booksCache = {}; // { id: bookObj }
+    let filteredBooks = []; // array of book objects
+    let currentPage = 1;
+    let pageSize = Number(pageSizeSelect.value) || 10;
+
+    // realtime DB ref
+    const booksRef = db.ref('books');
+
+    /* =========================================================================
+       UTILITIES: toasts, loading, validations
+       ========================================================================= */
+    function showLoading(show = true) {
+      loadingOverlay.classList.toggle('hidden', !show);
+    }
+
+    function showToast(message, type = 'success', duration = 3500) {
+      const el = document.createElement('div');
+      const base = 'toast-enter px-4 py-2 rounded shadow flex items-center gap-3 max-w-sm';
+      if (type === 'success') el.className = base + ' bg-emerald-50 text-emerald-800 border border-emerald-100';
+      else if (type === 'error') el.className = base + ' bg-rose-50 text-rose-800 border border-rose-100';
+      else el.className = base + ' bg-sky-50 text-sky-800 border border-sky-100';
+      el.innerHTML = `<div class="text-sm">${message}</div>`;
+      toastContainer.appendChild(el);
+      requestAnimationFrame(() => el.classList.add('toast-show'));
+      setTimeout(() => { el.classList.remove('toast-show'); setTimeout(() => el.remove(), 300); }, duration);
+    }
+
+    function isValidISBN(isbn) {
+      // Simple check: digits and optionally dashes, 10 or 13 characters excluding dashes
+      if (!isbn) return true;
+      const cleaned = isbn.replace(/-/g,'').trim();
+      return /^[0-9]{10}$/.test(cleaned) || /^[0-9]{13}$/.test(cleaned);
+    }
+
+    /* =========================================================================
+       REACTIVE: listen for realtime changes
+       - We use 'value' to rebuild list on every change for demo simplicity.
+       - For large data sets, use pagination on server or query constraints.
+       ========================================================================= */
+    booksRef.on('value', snapshot => {
+      booksCache = snapshot.val() || {};
+      rebuildDerivedLists();
+      showToast('Books list updated (realtime)', 'info', 1200);
+    }, err => {
+      console.error('booksRef error', err);
+      showToast('Failed to listen to books: ' + err.message, 'error');
+    });
+
+    /* =========================================================================
+       CRUD OPERATIONS
+       ========================================================================= */
+
+    // CREATE or UPDATE
+    bookForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      // gather values
+      const bookId = bookIdInput.value || null;
+      const title = titleInput.value.trim();
+      const author = authorInput.value.trim();
+      const publisher = publisherInput.value.trim();
+      const isbn = isbnInput.value.trim();
+      const category = categoryInput.value.trim();
+      const language = languageInput.value.trim();
+      const description = descriptionInput.value.trim();
+      const quantity = Number(quantityInput.value) || 0;
+      let available = Number(availableInput.value);
+      if (Number.isNaN(available)) available = quantity;
+
+      // validation
+      if (!title || !author) {
+        showToast('Title and Author are required', 'error'); return;
+      }
+      if (!isValidISBN(isbn)) {
+        showToast('ISBN must be 10 or 13 digits (dashes allowed)', 'error'); return;
+      }
+      if (available > quantity) {
+        showToast('Available cannot exceed Quantity', 'error'); return;
+      }
+
+      try {
+        showLoading(true);
+        // handle image upload if selected
+        const file = bookImageInput.files[0];
+        let photoURL = null, photoPath = null;
+        if (file) {
+          // upload to storage path books_images/{id or pushKey}/{timestamp}.{ext}
+          const idForPath = bookId || db.ref('books').push().key;
+          const ext = file.name.split('.').pop();
+          const path = `book_images/${idForPath}/${Date.now()}.${ext}`;
+          const storageRef = storage.ref(path);
+          await storageRef.put(file);
+          photoURL = await storageRef.getDownloadURL();
+          photoPath = path;
+        }
+
+        const payload = {
+          title, author, publisher, isbn, category, language, description,
+          quantity, available,
+          updatedAt: Date.now()
+        };
+        if (photoURL) {
+          payload.photoURL = photoURL;
+          payload.photoPath = photoPath;
+        }
+
+        if (bookId) {
+          // UPDATE
+          await db.ref('books/' + bookId).update(payload);
+          showToast('Book updated', 'success');
+        } else {
+          // CREATE
+          payload.createdAt = Date.now();
+          const newRef = db.ref('books').push();
+          await newRef.set(payload);
+          showToast('Book added', 'success');
+        }
+
+        // reset form
+        resetForm();
+      } catch (err) {
+        console.error(err);
+        showToast('Failed to save book: ' + (err.message || ''), 'error');
+      } finally {
+        showLoading(false);
+      }
+    });
+
+    // Delete book
+    async function deleteBook(id, soft = false) {
+      if (!confirm('Delete this book? This will remove it from the database.')) return;
+      try {
+        showLoading(true);
+        const snap = await db.ref('books/' + id).once('value');
+        const book = snap.val();
+        if (!book) { showToast('Book not found', 'error'); return; }
+        // delete photo from storage if exists
+        if (book.photoPath) {
+          await storage.ref(book.photoPath).delete().catch(()=>{ /* ignore */ });
+        }
+        // remove db entry
+        await db.ref('books/' + id).remove();
+        showToast('Book deleted', 'success');
+      } catch (err) {
+        console.error(err);
+        showToast('Failed to delete book: ' + (err.message || ''), 'error');
+      } finally {
+        showLoading(false);
+      }
+    }
+
+    // View book (populate view panel)
+    function viewBook(id) {
+      const book = booksCache[id];
+      if (!book) { showToast('Book not found', 'error'); return; }
+      vTitle.textContent = book.title || '';
+      vAuthor.textContent = book.author || '';
+      vPublisher.textContent = book.publisher || '';
+      vIsbn.textContent = book.isbn || '';
+      vCategory.textContent = book.category || '';
+      vLanguage.textContent = book.language || '';
+      vQuantity.textContent = String(book.quantity || 0);
+      vAvailable.textContent = String(book.available || 0);
+      vDescription.textContent = book.description || '';
+      if (book.photoURL) {
+        viewImage.innerHTML = `<img src="${book.photoURL}" alt="${escapeHtml(book.title)}" class="w-full h-full object-cover">`;
+      } else {
+        viewImage.innerHTML = `<div class="w-full h-full flex items-center justify-center text-slate-500">No image</div>`;
+      }
+      viewPanel.classList.remove('hidden');
+      viewPanel.scrollIntoView({ behavior: 'smooth' });
+    }
+
+    // Edit book: populate form
+    function editBook(id) {
+      const book = booksCache[id];
+      if (!book) { showToast('Book not found', 'error'); return; }
+      bookIdInput.value = id;
+      formTitle.textContent = 'Edit Book';
+      titleInput.value = book.title || '';
+      authorInput.value = book.author || '';
+      publisherInput.value = book.publisher || '';
+      isbnInput.value = book.isbn || '';
+      categoryInput.value = book.category || '';
+      languageInput.value = book.language || '';
+      descriptionInput.value = book.description || '';
+      quantityInput.value = book.quantity || 0;
+      availableInput.value = book.available || 0;
+      // preview
+      if (book.photoURL) {
+        preview.innerHTML = `<img src="${book.photoURL}" alt="${escapeHtml(book.title)}" class="w-full h-full object-cover">`;
+      } else {
+        preview.innerHTML = 'No image selected';
+      }
+      cancelEditBtn.classList.remove('hidden');
+      // scroll to form
+      bookForm.scrollIntoView({ behavior: 'smooth' });
+    }
+
+    cancelEditBtn.addEventListener('click', () => resetForm());
+
+    // Reset form
+    function resetForm() {
+      bookIdInput.value = '';
+      formTitle.textContent = 'Add Book';
+      bookForm.reset();
+      preview.innerHTML = 'No image selected';
+      cancelEditBtn.classList.add('hidden');
+      availableInput.value = quantityInput.value || 1;
+      // clear file input
+      bookImageInput.value = '';
+    }
+
+    resetBtn.addEventListener('click', resetForm);
+
+    // preview image when selected
+    bookImageInput.addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (!file) { preview.innerHTML = 'No image selected'; return; }
+      if (!file.type.startsWith('image/')) { showToast('Select an image file', 'error'); bookImageInput.value = ''; return; }
+      const reader = new FileReader();
+      reader.onload = () => preview.innerHTML = `<img src="${reader.result}" alt="preview" class="w-full h-full object-cover">`;
+      reader.readAsDataURL(file);
+    });
+
+    /* =========================================================================
+       SEARCH / FILTER / PAGINATION LOGIC
+       ========================================================================= */
+
+    function rebuildDerivedLists() {
+      // create array from booksCache
+      const arr = Object.entries(booksCache).map(([id, b]) => ({ id, ...b }));
+      // Apply search & filters
+      applyFiltersToArray(arr);
+      // Populate filter dropdowns
+      populateFilterOptions(arr);
+      // compute stats
+      updateStats(arr);
+      // render page
+      renderPage();
+    }
+
+    function applyFiltersToArray(arrOverride=null) {
+      const arr = arrOverride || Object.entries(booksCache).map(([id, b]) => ({ id, ...b }));
+      const q = (searchInput.value || '').trim().toLowerCase();
+      const cat = filterCategory.value;
+      const lang = filterLanguage.value;
+      const availability = filterAvailability.value;
+
+      filteredBooks = arr.filter(book => {
+        // search by title, author, isbn, category
+        if (q) {
+          const hay = `${book.title||''} ${book.author||''} ${book.isbn||''} ${book.category||''}`.toLowerCase();
+          if (!hay.includes(q)) return false;
+        }
+        if (cat && (book.category || '') !== cat) return false;
+        if (lang && (book.language || '') !== lang) return false;
+        if (availability === 'available' && !(Number(book.available) > 0)) return false;
+        if (availability === 'none' && Number(book.available) > 0) return false;
+        return true;
+      });
+
+      // sort by createdAt desc
+      filteredBooks.sort((a,b) => (b.createdAt||0) - (a.createdAt||0));
+    }
+
+    function populateFilterOptions(arr) {
+      // distinct categories & languages
+      const categories = new Set();
+      const languages = new Set();
+      arr.forEach(b => { if (b.category) categories.add(b.category); if (b.language) languages.add(b.language); });
+
+      // repopulate category select
+      const prevCat = filterCategory.value;
+      filterCategory.innerHTML = `<option value="">All categories</option>`;
+      Array.from(categories).sort().forEach(cat => {
+        const opt = document.createElement('option'); opt.value = cat; opt.textContent = cat; filterCategory.appendChild(opt);
+      });
+      if (prevCat) filterCategory.value = prevCat;
+
+      // languages
+      const prevLang = filterLanguage.value;
+      filterLanguage.innerHTML = `<option value="">All languages</option>`;
+      Array.from(languages).sort().forEach(l => {
+        const opt = document.createElement('option'); opt.value = l; opt.textContent = l; filterLanguage.appendChild(opt);
+      });
+      if (prevLang) filterLanguage.value = prevLang;
+    }
+
+    function updateStats(arr) {
+      const total = arr.length;
+      const totalAvailable = arr.reduce((s,b) => s + (Number(b.available)||0), 0);
+      statsSummary.textContent = `${total} books • ${totalAvailable} available`;
+    }
+
+    // pagination rendering
+    function renderPage() {
+      pageSize = Number(pageSizeSelect.value);
+      const total = filteredBooks.length;
+      const totalPages = Math.max(1, Math.ceil(total / pageSize));
+      if (currentPage > totalPages) currentPage = totalPages;
+
+      const start = (currentPage - 1) * pageSize;
+      const end = Math.min(total, start + pageSize);
+      const pageItems = filteredBooks.slice(start, end);
+
+      // update table & cards
+      renderTable(pageItems);
+      renderCards(pageItems);
+
+      // update pagination UI
+      paginationInfo.textContent = `Showing ${start+1} - ${end} of ${total}`;
+      renderPageNumbers(totalPages);
+    }
+
+    function renderPageNumbers(totalPages) {
+      pageNumbers.innerHTML = '';
+      const maxButtons = 7;
+      let start = Math.max(1, currentPage - Math.floor(maxButtons/2));
+      let end = Math.min(totalPages, start + maxButtons - 1);
+      if (end - start < maxButtons - 1) start = Math.max(1, end - maxButtons + 1);
+
+      for (let i=start;i<=end;i++) {
+        const btn = document.createElement('button');
+        btn.className = `px-3 py-1 rounded ${i === currentPage ? 'bg-indigo-600 text-white' : 'bg-slate-100'}`;
+        btn.textContent = i;
+        btn.addEventListener('click', () => { currentPage = i; renderPage(); });
+        pageNumbers.appendChild(btn);
+      }
+    }
+
+    prevPageBtn.addEventListener('click', () => { if (currentPage>1) { currentPage--; renderPage(); } });
+    nextPageBtn.addEventListener('click', () => {
+      const totalPages = Math.max(1, Math.ceil(filteredBooks.length / pageSize));
+      if (currentPage < totalPages) { currentPage++; renderPage(); }
+    });
+
+    // Hook search/filter/pageSize change
+    searchInput.addEventListener('input', () => {
+      clearSearch.classList.toggle('hidden', !searchInput.value);
+      currentPage = 1; applyFiltersToArray(); renderPage();
+    });
+    clearSearch.addEventListener('click', () => { searchInput.value=''; clearSearch.classList.add('hidden'); currentPage=1; applyFiltersToArray(); renderPage(); });
+
+    filterCategory.addEventListener('change', () => { currentPage = 1; applyFiltersToArray(); renderPage(); });
+    filterLanguage.addEventListener('change', () => { currentPage = 1; applyFiltersToArray(); renderPage(); });
+    filterAvailability.addEventListener('change', () => { currentPage = 1; applyFiltersToArray(); renderPage(); });
+    pageSizeSelect.addEventListener('change', () => { currentPage = 1; renderPage(); });
+
+    /* =========================================================================
+       RENDER: Table rows for desktop
+       ========================================================================= */
+    function renderTable(items) {
+      booksTableBody.innerHTML = '';
+      items.forEach(b => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td class="px-4 py-3 align-top"><div class="w-14 h-14 bg-gray-100 rounded overflow-hidden">${b.photoURL ? `<img src="${b.photoURL}" alt="${escapeHtml(b.title)}" class="w-full h-full object-cover">` : `<div class="w-full h-full flex items-center justify-center text-xs text-slate-500">No image</div>`}</div></td>
+          <td class="px-4 py-3 align-top"><div class="font-medium">${escapeHtml(b.title)}</div></td>
+          <td class="px-4 py-3 align-top">${escapeHtml(b.author)}</td>
+          <td class="px-4 py-3 align-top">${escapeHtml(b.category||'—')}</td>
+          <td class="px-4 py-3 align-top">${escapeHtml(b.language||'—')}</td>
+          <td class="px-4 py-3 align-top text-xs">${escapeHtml(b.isbn||'—')}</td>
+          <td class="px-4 py-3 align-top">${Number(b.quantity)||0}</td>
+          <td class="px-4 py-3 align-top">${Number(b.available)||0}</td>
+          <td class="px-4 py-3 align-top">
+            <div class="flex items-center gap-2">
+              <button data-id="${b.id}" class="viewBtn px-3 py-1 rounded bg-slate-100 text-sm">View</button>
+              <button data-id="${b.id}" class="editBtn px-3 py-1 rounded bg-indigo-600 text-white text-sm">Edit</button>
+              <button data-id="${b.id}" class="delBtn px-3 py-1 rounded bg-rose-50 text-rose-600 text-sm">Delete</button>
+            </div>
+          </td>
+        `;
+        // attach handlers
+        tr.querySelector('.viewBtn').addEventListener('click', () => viewBook(b.id));
+        tr.querySelector('.editBtn').addEventListener('click', () => editBook(b.id));
+        tr.querySelector('.delBtn').addEventListener('click', () => deleteBook(b.id));
+        booksTableBody.appendChild(tr);
+      });
+    }
+
+    /* =========================================================================
+       RENDER: Cards for mobile
+       ========================================================================= */
+    function renderCards(items) {
+      booksCards.innerHTML = '';
+      items.forEach(b => {
+        const card = document.createElement('article');
+        card.className = 'bg-white rounded-lg p-3 shadow flex gap-3';
+        card.innerHTML = `
+          <div class="w-20 h-28 bg-gray-100 rounded overflow-hidden">${b.photoURL ? `<img src="${b.photoURL}" alt="${escapeHtml(b.title)}" class="w-full h-full object-cover">` : `<div class="w-full h-full flex items-center justify-center text-xs text-slate-500">No image</div>`}</div>
+          <div class="flex-1">
+            <div class="font-medium">${escapeHtml(b.title)}</div>
+            <div class="text-xs text-slate-500">${escapeHtml(b.author)}</div>
+            <div class="text-xs text-slate-400 mt-1">${escapeHtml(b.category||'—')} • ${escapeHtml(b.language||'—')}</div>
+            <div class="mt-2 flex items-center gap-2">
+              <button data-id="${b.id}" class="viewBtn px-3 py-1 rounded bg-slate-100 text-sm">View</button>
+              <button data-id="${b.id}" class="editBtn px-3 py-1 rounded bg-indigo-600 text-white text-sm">Edit</button>
+              <button data-id="${b.id}" class="delBtn px-3 py-1 rounded bg-rose-50 text-rose-600 text-sm">Delete</button>
+            </div>
+          </div>
+        `;
+        card.querySelector('.viewBtn').addEventListener('click', () => viewBook(b.id));
+        card.querySelector('.editBtn').addEventListener('click', () => editBook(b.id));
+        card.querySelector('.delBtn').addEventListener('click', () => deleteBook(b.id));
+        booksCards.appendChild(card);
+      });
+    }
+
+    /* =========================================================================
+       HELPER UTILITIES
+       ========================================================================= */
+    function escapeHtml(str='') {
+      return String(str)
+        .replaceAll('&','&amp;')
+        .replaceAll('<','&lt;')
+        .replaceAll('>','&gt;')
+        .replaceAll('"','&quot;')
+        .replaceAll("'", '&#039;');
+    }
+
+    /* =========================================================================
+       INIT: initial derived lists & UI hooks
+       ========================================================================= */
+    // initialize preview
+    preview.innerHTML = 'No image selected';
+
+    // keyboard: pressing Enter in search triggers early apply
+    searchInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); currentPage=1; applyFiltersToArray(); renderPage(); } });
+
+    // initial render (empty)
+    rebuildDerivedLists();
+
+    // small note: ensure available doesn't exceed quantity when quantity changes
+    quantityInput.addEventListener('input', () => {
+      const q = Number(quantityInput.value) || 0;
+      const a = Number(availableInput.value) || 0;
+      if (a > q) availableInput.value = q;
+    });
+
+    // show initial stats
+    statsSummary.textContent = 'Loading…';
+
+    // Safety note for console
+    console.info('Book Management Module initialized. Replace firebaseConfig with your values and enforce security rules in production.');
+  </script>
+</body>
+</html>

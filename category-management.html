@@ -1,0 +1,552 @@
+<!doctype html>
+<html lang="en" class="scroll-smooth">
+<head>
+  <!--
+    Category Management Module
+    - Single HTML file using Tailwind CSS CDN + Firebase Realtime Database (compat)
+    - Features:
+      * Create / Update / Delete categories
+      * View categories as responsive cards
+      * Book count per category (computed from /books)
+      * Search categories (debounced)
+      * Realtime updates (categories + books)
+      * Responsive modern UI, toasts, loading overlay
+    - IMPORTANT: Replace firebaseConfig with your project's credentials below.
+    - Security: For production, enforce appropriate Realtime Database rules and admin checks.
+  -->
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>LibraSuite — Category Management</title>
+
+  <!-- Google font -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+
+  <!-- Tailwind CDN -->
+  <script>
+    window.tailwind = { config: { darkMode: 'class' } }
+  </script>
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <style>
+    body { font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial; }
+    .toast-enter { transform: translateY(8px); opacity: 0; }
+    .toast-show  { transform: translateY(0); opacity: 1; transition: all .28s cubic-bezier(.2,.9,.3,1); }
+    .spinner { border: 4px solid rgba(0,0,0,0.08); border-top-color: rgba(37,99,235,1); border-radius: 9999px; width: 36px; height: 36px; animation: spin .9s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    /* small card hover */
+    .card-hover:hover { transform: translateY(-4px); transition: transform .18s ease; }
+  </style>
+</head>
+<body class="bg-gray-50 text-slate-800">
+
+  <!-- HEADER -->
+  <header class="bg-white shadow sticky top-0 z-40">
+    <div class="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <svg class="w-8 h-8 text-indigo-600" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3 5.5C3 4.119 4.12 3 5.5 3h11C18.88 3 20 4.119 20 5.5V19c0 .553-.447 1-1 1H5.5C4.12 20 3 18.881 3 17.5V5.5Z" stroke="currentColor" stroke-width="1.2"/></svg>
+        <div>
+          <div class="text-lg font-semibold">LibraSuite</div>
+          <div class="text-xs text-slate-400 -mt-1">Category Management</div>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-3">
+        <div id="totalCategories" class="text-sm text-slate-600">0 categories</div>
+        <div id="totalBooks" class="text-sm text-slate-600 hidden">• 0 books</div>
+      </div>
+    </div>
+  </header>
+
+  <!-- MAIN: two column on wide screens -->
+  <main class="max-w-7xl mx-auto px-4 py-8 grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+    <!-- LEFT: Create / Edit form -->
+    <section class="lg:col-span-1 space-y-6">
+      <!-- Create / Edit Card -->
+      <div class="bg-white rounded-lg shadow p-6">
+        <!-- Section comment: Create Category -->
+        <h2 id="formTitle" class="text-lg font-semibold mb-2">Create Category</h2>
+
+        <form id="categoryForm" class="space-y-3" autocomplete="off">
+          <input type="hidden" id="categoryId" />
+
+          <div>
+            <label class="text-sm font-medium">Name <span class="text-rose-600">*</span></label>
+            <input id="catName" type="text" required class="mt-1 block w-full px-3 py-2 rounded border" placeholder="e.g., Science" />
+          </div>
+
+          <div>
+            <label class="text-sm font-medium">Slug (optional)</label>
+            <input id="catSlug" type="text" class="mt-1 block w-full px-3 py-2 rounded border" placeholder="auto-generated from name" />
+            <p class="text-xs text-slate-400 mt-1">Used as a stable identifier. Letters, numbers, hyphens.</p>
+          </div>
+
+          <div>
+            <label class="text-sm font-medium">Description</label>
+            <textarea id="catDesc" rows="3" class="mt-1 block w-full px-3 py-2 rounded border" placeholder="Short description (optional)"></textarea>
+          </div>
+
+          <div>
+            <label class="text-sm font-medium">Color (UI tag)</label>
+            <input id="catColor" type="color" value="#60a5fa" class="mt-1 w-12 h-10 p-0 border rounded" />
+          </div>
+
+          <div class="flex items-center gap-3">
+            <button id="saveCategory" type="submit" class="px-4 py-2 bg-indigo-600 text-white rounded">Save Category</button>
+            <button id="cancelEdit" type="button" class="px-4 py-2 bg-slate-100 rounded hidden">Cancel</button>
+            <button id="resetForm" type="button" class="px-3 py-2 text-sm text-slate-500">Reset</button>
+          </div>
+        </form>
+      </div>
+
+      <!-- QUICK HELP -->
+      <div class="bg-white rounded-lg shadow p-4 text-sm text-slate-600">
+        <!-- Section comment: Help -->
+        <strong>Tips</strong>
+        <ul class="mt-2 list-disc list-inside space-y-1">
+          <li>Slug is generated automatically if left blank.</li>
+          <li>Deleting a category can optionally remove the category reference from existing books.</li>
+          <li>All changes are saved to Firebase Realtime Database in real time.</li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- RIGHT: Search + Filters + Cards list -->
+    <section class="lg:col-span-2 space-y-6">
+
+      <!-- Search bar -->
+      <div class="bg-white rounded-lg shadow p-4 flex flex-wrap items-center gap-3 justify-between">
+        <!-- Section comment: Search Category -->
+        <div class="flex items-center gap-3 flex-1 min-w-0">
+          <div class="relative flex-1">
+            <input id="search" type="search" placeholder="Search categories by name or slug..." class="w-full px-4 py-2 rounded border" />
+            <button id="clearSearch" class="absolute right-2 top-2 text-slate-400 hidden">✕</button>
+          </div>
+          <div class="text-sm text-slate-500" id="searchCount">Showing all</div>
+        </div>
+
+        <div class="flex items-center gap-2">
+          <button id="refreshBtn" class="px-3 py-2 bg-slate-100 rounded">Refresh</button>
+        </div>
+      </div>
+
+      <!-- Categories grid -->
+      <div id="categoriesGrid" class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <!-- JS will render category cards here -->
+      </div>
+    </section>
+  </main>
+
+  <!-- MODAL: Delete confirmation -->
+  <div id="deleteModal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/40">
+    <div class="bg-white rounded-lg shadow p-6 w-full max-w-lg">
+      <h3 class="text-lg font-semibold">Delete category</h3>
+      <p class="text-sm text-slate-600 mt-2" id="deleteModalMsg">Are you sure?</p>
+
+      <div class="mt-4 flex items-center gap-2">
+        <label class="flex items-center gap-2 text-sm">
+          <input id="deleteReassign" type="checkbox" class="h-4 w-4" />
+          Reassign affected books to "Uncategorized" (leave category blank)
+        </label>
+      </div>
+
+      <div class="mt-4 flex items-center gap-3 justify-end">
+        <button id="cancelDeleteBtn" class="px-3 py-2 bg-slate-100 rounded">Cancel</button>
+        <button id="confirmDeleteBtn" class="px-4 py-2 bg-rose-600 text-white rounded">Delete</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- TOASTS & LOADING -->
+  <div id="toastContainer" class="fixed bottom-6 right-6 flex flex-col gap-2 z-50"></div>
+  <div id="loading" class="fixed inset-0 z-40 hidden items-center justify-center bg-black/20">
+    <div class="bg-white rounded-lg p-6 flex items-center gap-4 shadow">
+      <div class="spinner" aria-hidden="true"></div>
+      <div>
+        <div class="font-medium">Processing…</div>
+        <div class="text-xs text-slate-500">Please wait</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- FIREBASE (compat) -->
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
+
+  <script>
+    /**************************************************************************
+     CONFIG & INITIALIZATION
+     - Replace the firebaseConfig object with your project's credentials.
+    **************************************************************************/
+    const firebaseConfig = {
+      apiKey: "AIzaSyBBxENou0wJoiIALCm27TvDQEKHiGdlVf4",
+      authDomain: "digital-library-3cb1c.firebaseapp.com",
+      databaseURL: "https://digital-library-3cb1c-default-rtdb.asia-southeast1.firebasedatabase.app",
+      projectId: "digital-library-3cb1c",
+      storageBucket: "digital-library-3cb1c.firebasestorage.app",
+      messagingSenderId: "3671589649",
+      appId: "1:3671589649:web:83e9e90236f6a88f07c2b0",
+    };
+
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+
+    /**************************************************************************
+     UI ELEMENTS
+    **************************************************************************/
+    const categoryForm = document.getElementById('categoryForm');
+    const categoryIdInput = document.getElementById('categoryId');
+    const formTitle = document.getElementById('formTitle');
+    const catName = document.getElementById('catName');
+    const catSlug = document.getElementById('catSlug');
+    const catDesc = document.getElementById('catDesc');
+    const catColor = document.getElementById('catColor');
+    const saveCategoryBtn = document.getElementById('saveCategory');
+    const cancelEditBtn = document.getElementById('cancelEdit');
+    const resetFormBtn = document.getElementById('resetForm');
+
+    const categoriesGrid = document.getElementById('categoriesGrid');
+    const totalCategories = document.getElementById('totalCategories');
+    const totalBooks = document.getElementById('totalBooks');
+
+    const searchInput = document.getElementById('search');
+    const clearSearch = document.getElementById('clearSearch');
+    const searchCount = document.getElementById('searchCount');
+    const refreshBtn = document.getElementById('refreshBtn');
+
+    const deleteModal = document.getElementById('deleteModal');
+    const deleteModalMsg = document.getElementById('deleteModalMsg');
+    const confirmDeleteBtn = document.getElementById('confirmDeleteBtn');
+    const cancelDeleteBtn = document.getElementById('cancelDeleteBtn');
+    const deleteReassign = document.getElementById('deleteReassign');
+
+    const toastContainer = document.getElementById('toastContainer');
+    const loading = document.getElementById('loading');
+
+    /**************************************************************************
+     STATE
+    **************************************************************************/
+    const categoriesRef = db.ref('categories');
+    const booksRef = db.ref('books');
+
+    let categoriesCache = {}; // { id: categoryObj }
+    let booksCache = {}; // { id: bookObj }
+    let filteredCategoryKeys = []; // array of category ids matching search
+    let pendingDeleteCategoryId = null;
+
+    /**************************************************************************
+     UTILITIES
+    **************************************************************************/
+    function showLoading(on = true) { loading.classList.toggle('hidden', !on); }
+    function showToast(message, type = 'success', duration = 3500) {
+      const el = document.createElement('div');
+      const base = 'toast-enter px-4 py-2 rounded shadow flex items-center gap-3 max-w-sm';
+      if (type === 'success') el.className = base + ' bg-emerald-50 text-emerald-800 border border-emerald-100';
+      else if (type === 'error') el.className = base + ' bg-rose-50 text-rose-800 border border-rose-100';
+      else el.className = base + ' bg-sky-50 text-sky-800 border border-sky-100';
+      el.innerHTML = `<div class="text-sm">${message}</div>`;
+      toastContainer.appendChild(el);
+      requestAnimationFrame(() => el.classList.add('toast-show'));
+      setTimeout(() => { el.classList.remove('toast-show'); setTimeout(() => el.remove(), 300); }, duration);
+    }
+
+    function slugify(v) {
+      return String(v || '').trim().toLowerCase()
+        .replace(/[^a-z0-9\s-]/g, '')
+        .replace(/\s+/g, '-')
+        .replace(/-+/g, '-')
+        .replace(/^-+|-+$/g, '');
+    }
+
+    // ensure slug uniqueness by appending -1, -2... if needed
+    function ensureUniqueSlug(raw, excludeId = null) {
+      let base = slugify(raw) || 'category';
+      if (!Object.keys(categoriesCache).some(id => id !== excludeId && (categoriesCache[id].slug === base))) return base;
+      let i = 1;
+      while (true) {
+        const cand = `${base}-${i}`;
+        if (!Object.keys(categoriesCache).some(id => id !== excludeId && (categoriesCache[id].slug === cand))) return cand;
+        i++;
+      }
+    }
+
+    // sanitize user input for display
+    function escapeHtml(s='') {
+      return String(s)
+        .replaceAll('&','&amp;')
+        .replaceAll('<','&lt;')
+        .replaceAll('>','&gt;')
+        .replaceAll('"','&quot;')
+        .replaceAll("'", '&#039;');
+    }
+
+    /**************************************************************************
+     REALTIME LISTENERS
+     - Listen to /categories and /books so UI updates automatically
+    **************************************************************************/
+    categoriesRef.on('value', snap => {
+      categoriesCache = snap.val() || {};
+      renderCategories(); // rebuild UI
+    }, err => {
+      console.error('categoriesRef error', err);
+      showToast('Failed to read categories: ' + (err.message || ''), 'error');
+    });
+
+    booksRef.on('value', snap => {
+      booksCache = snap.val() || {};
+      // update book counts on existing categories card without re-rendering entire layout (but simpler to rerender)
+      renderCategories();
+    }, err => {
+      console.error('booksRef error', err);
+      showToast('Failed to read books: ' + (err.message || ''), 'error');
+    });
+
+    /**************************************************************************
+     RENDER: categories grid (cards)
+    **************************************************************************/
+    function computeBookCountForCategory(category) {
+      // category may have slug and name; books may store category as slug or name
+      if (!category) return 0;
+      const slug = category.slug || '';
+      const name = category.name || '';
+      let count = 0;
+      Object.values(booksCache || {}).forEach(book => {
+        if (!book) return;
+        const bookCat = (book.category || '').toString();
+        if (!bookCat) return;
+        if (slug && bookCat === slug) count++;
+        else if (name && bookCat === name) count++;
+      });
+      return count;
+    }
+
+    function renderCategories() {
+      categoriesGrid.innerHTML = '';
+      const keys = Object.keys(categoriesCache).sort((a,b) => {
+        const A = (categoriesCache[a].name || '').toLowerCase();
+        const B = (categoriesCache[b].name || '').toLowerCase();
+        return A.localeCompare(B);
+      });
+
+      // apply search filter
+      const q = (searchInput.value || '').trim().toLowerCase();
+      filteredCategoryKeys = keys.filter(k => {
+        if (!q) return true;
+        const c = categoriesCache[k];
+        return (c.name || '').toLowerCase().includes(q) || (c.slug || '').toLowerCase().includes(q) || (c.description || '').toLowerCase().includes(q);
+      });
+
+      // update header counters
+      totalCategories.textContent = `${filteredCategoryKeys.length} categories`;
+      const totalBookCount = Object.values(booksCache || {}).reduce((s,b) => s + (Number(b ? b.quantity || 0 : 0)), 0);
+      totalBooks.textContent = `• ${Object.keys(booksCache||{}).length} books`;
+      totalBooks.classList.remove('hidden');
+
+      if (filteredCategoryKeys.length === 0) {
+        categoriesGrid.innerHTML = `<div class="col-span-1 sm:col-span-2 text-sm text-slate-500">No categories found. Create one using the form.</div>`;
+        searchCount.textContent = q ? `0 results for "${q}"` : 'Showing all';
+        return;
+      }
+
+      searchCount.textContent = q ? `${filteredCategoryKeys.length} results for "${q}"` : `Showing ${filteredCategoryKeys.length}`;
+
+      filteredCategoryKeys.forEach(key => {
+        const c = categoriesCache[key];
+        const count = computeBookCountForCategory(c);
+        const desc = c.description ? escapeHtml(c.description) : '';
+        const color = c.color || '#60a5fa';
+        const card = document.createElement('article');
+        card.className = 'bg-white rounded-lg shadow p-4 card-hover';
+        card.innerHTML = `
+          <div class="flex items-start justify-between gap-3">
+            <div class="flex items-start gap-3 min-w-0">
+              <div style="background:${color};" class="w-12 h-12 rounded-lg flex items-center justify-center text-white font-semibold">${escapeHtml((c.name||'').slice(0,2).toUpperCase())}</div>
+              <div class="min-w-0">
+                <div class="font-semibold truncate">${escapeHtml(c.name || 'Unnamed')}</div>
+                <div class="text-xs text-slate-500 truncate">slug: ${escapeHtml(c.slug || '')}</div>
+              </div>
+            </div>
+
+            <div class="text-right">
+              <div class="text-sm font-medium">${count}</div>
+              <div class="text-xs text-slate-400">books</div>
+            </div>
+          </div>
+
+          <div class="mt-3 text-sm text-slate-600">${desc}</div>
+
+          <div class="mt-4 flex items-center gap-2">
+            <button data-id="${key}" class="editBtn px-3 py-1 rounded bg-indigo-600 text-white text-sm">Edit</button>
+            <button data-id="${key}" class="deleteBtn px-3 py-1 rounded bg-rose-50 text-rose-600 text-sm">Delete</button>
+          </div>
+        `;
+        // attach handlers
+        card.querySelector('.editBtn').addEventListener('click', () => loadCategoryForEdit(key));
+        card.querySelector('.deleteBtn').addEventListener('click', () => promptDeleteCategory(key));
+        categoriesGrid.appendChild(card);
+      });
+    }
+
+    /**************************************************************************
+     FORM: Create / Update category
+     - If categoryId is set, perform update; otherwise create new category.
+     - Slug uniqueness ensured.
+    **************************************************************************/
+    categoryForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const id = categoryIdInput.value || null;
+      const name = (catName.value || '').trim();
+      const slugInput = (catSlug.value || '').trim();
+      const description = (catDesc.value || '').trim();
+      const color = (catColor.value || '#60a5fa').trim();
+
+      if (!name) { showToast('Category name is required', 'error'); return; }
+
+      try {
+        showLoading(true);
+
+        // Determine slug and ensure unique
+        const slugBase = slugInput || name;
+        const slug = ensureUniqueSlug(slugBase, id);
+
+        const payload = { name, slug, description, color, updatedAt: Date.now() };
+
+        if (id) {
+          // UPDATE
+          await categoriesRef.child(id).update(payload);
+          showToast('Category updated', 'success');
+          // If slug changed, optionally update books' category references that used the old slug.
+          // For safety we do not automatically update book.category here — leave it to admin if needed.
+        } else {
+          // CREATE
+          payload.createdAt = Date.now();
+          const newRef = categoriesRef.push();
+          await newRef.set(payload);
+          showToast('Category created', 'success');
+        }
+
+        // reset form
+        resetForm();
+      } catch (err) {
+        console.error('save category err', err);
+        showToast('Failed to save category: ' + (err.message || ''), 'error');
+      } finally {
+        showLoading(false);
+      }
+    });
+
+    cancelEditBtn.addEventListener('click', resetForm);
+    resetFormBtn.addEventListener('click', resetForm);
+
+    function resetForm() {
+      categoryIdInput.value = '';
+      formTitle.textContent = 'Create Category';
+      catName.value = '';
+      catSlug.value = '';
+      catDesc.value = '';
+      catColor.value = '#60a5fa';
+      cancelEditBtn.classList.add('hidden');
+    }
+
+    function loadCategoryForEdit(id) {
+      const c = categoriesCache[id];
+      if (!c) { showToast('Category not found', 'error'); return; }
+      categoryIdInput.value = id;
+      formTitle.textContent = 'Edit Category';
+      catName.value = c.name || '';
+      catSlug.value = c.slug || '';
+      catDesc.value = c.description || '';
+      catColor.value = c.color || '#60a5fa';
+      cancelEditBtn.classList.remove('hidden');
+      // scroll to form for convenience
+      categoryForm.scrollIntoView({ behavior: 'smooth' });
+    }
+
+    /**************************************************************************
+     DELETE: prompt and perform deletion
+     - If books reference this category (slug or name), offer option to reassign
+     - Reassignment sets book.category = '' (or you can set to 'Uncategorized')
+    **************************************************************************/
+    function promptDeleteCategory(id) {
+      const c = categoriesCache[id];
+      if (!c) { showToast('Category not found', 'error'); return; }
+      const count = computeBookCountForCategory(c);
+      deleteModalMsg.innerHTML = `Delete <strong>${escapeHtml(c.name)}</strong>? This category has <strong>${count}</strong> book(s) assigned.`;
+      deleteReassign.checked = true;
+      pendingDeleteCategoryId = id;
+      deleteModal.classList.remove('hidden');
+    }
+
+    cancelDeleteBtn.addEventListener('click', () => {
+      pendingDeleteCategoryId = null;
+      deleteModal.classList.add('hidden');
+    });
+
+    confirmDeleteBtn.addEventListener('click', async () => {
+      if (!pendingDeleteCategoryId) return;
+      const id = pendingDeleteCategoryId;
+      const c = categoriesCache[id];
+      const reassign = deleteReassign.checked;
+
+      try {
+        showLoading(true);
+        // find affected books (by slug or name)
+        const slug = c.slug || '';
+        const name = c.name || '';
+        const updates = {};
+        Object.entries(booksCache || {}).forEach(([bookId, book]) => {
+          if (!book) return;
+          const bookCat = (book.category || '').toString();
+          if (!bookCat) return;
+          if ((slug && bookCat === slug) || (name && bookCat === name)) {
+            if (reassign) updates[`books/${bookId}/category`] = ''; // clear category
+            else updates[`books/${bookId}/category`] = ''; // default: clear category
+          }
+        });
+
+        // execute updates: first update books if any, then remove category
+        if (Object.keys(updates).length > 0) {
+          await db.ref().update(updates); // multi-path update
+        }
+        await categoriesRef.child(id).remove();
+        showToast('Category deleted', 'success');
+      } catch (err) {
+        console.error('delete category err', err);
+        showToast('Failed to delete category: ' + (err.message || ''), 'error');
+      } finally {
+        pendingDeleteCategoryId = null;
+        deleteModal.classList.add('hidden');
+        showLoading(false);
+      }
+    });
+
+    /**************************************************************************
+     SEARCH (debounced)
+    **************************************************************************/
+    let searchTimeout = null;
+    searchInput.addEventListener('input', () => {
+      clearTimeout(searchTimeout);
+      const q = searchInput.value.trim();
+      clearSearch.classList.toggle('hidden', !q);
+      searchTimeout = setTimeout(() => {
+        renderCategories();
+      }, 250);
+    });
+    clearSearch.addEventListener('click', () => { searchInput.value = ''; clearSearch.classList.add('hidden'); renderCategories(); });
+
+    refreshBtn.addEventListener('click', () => {
+      showToast('Refreshed', 'info', 800);
+      // listeners are realtime; just re-render
+      renderCategories();
+    });
+
+    /**************************************************************************
+     INITIALIZE: basic load and notes
+    **************************************************************************/
+    resetForm();
+    renderCategories();
+
+    console.info('Category Management module loaded. Replace firebaseConfig credentials and secure your DB rules for production.');
+  </script>
+</body>
+</html>

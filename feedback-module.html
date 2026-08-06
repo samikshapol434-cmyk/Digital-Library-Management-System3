@@ -1,0 +1,653 @@
+<!doctype html>
+<html lang="en" class="scroll-smooth">
+<head>
+  <!--
+    Feedback Module (single-file)
+    Tech:
+      - HTML5
+      - Tailwind CSS (CDN)
+      - Advanced JavaScript (ES6+)
+      - Firebase Realtime Database + Storage (compat SDK)
+    Features:
+      - Contact form & Feedback form
+      - Rating system (stars)
+      - FAQ accordion
+      - Support contact info
+      - Email validation and client-side checks
+      - Success popup after submission
+      - Attachment upload to Firebase Storage with progress
+      - Responsive, modern UI
+    IMPORTANT:
+      Replace firebaseConfig below with your Firebase project credentials.
+      Secure your Realtime Database & Storage rules for production.
+  -->
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>LibraSuite — Feedback & Support</title>
+
+  <!-- Google font -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+
+  <!-- Tailwind CDN -->
+  <script>
+    window.tailwind = { config: { darkMode: 'class' } }
+  </script>
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <style>
+    body { font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial; }
+    .star { cursor: pointer; transition: transform .08s ease; }
+    .star:hover { transform: scale(1.08); }
+    .toast-enter { transform: translateY(10px); opacity:0; }
+    .toast-show  { transform: translateY(0); opacity:1; transition: all .28s cubic-bezier(.2,.9,.3,1); }
+    .spinner { border: 4px solid rgba(0,0,0,0.08); border-top-color: rgba(37,99,235,1); border-radius: 9999px; width: 36px; height: 36px; animation: spin .9s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    /* FAQ accordion transitions */
+    .faq-content { max-height: 0; overflow: hidden; transition: max-height 0.28s ease; }
+    .faq-open .faq-content { max-height: 400px; }
+  </style>
+</head>
+<body class="bg-gray-50 text-slate-800">
+
+  <!-- =========================
+       HEADER (module title)
+       ========================= -->
+  <header class="bg-white shadow-sm">
+    <div class="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <svg class="w-8 h-8 text-indigo-600" viewBox="0 0 24 24" fill="none"><path d="M3 5.5C3 4.119 4.12 3 5.5 3h11" stroke="currentColor" stroke-width="1.2"/></svg>
+        <div>
+          <div class="text-lg font-semibold">LibraSuite</div>
+          <div class="text-xs text-slate-500 -mt-1">Feedback & Support</div>
+        </div>
+      </div>
+      <div class="text-sm text-slate-500">We value your feedback — get help or send suggestions</div>
+    </div>
+  </header>
+
+  <!-- =========================
+       MAIN (two-column layout)
+       Left: Forms
+       Right: FAQ, Support, Recent feedback preview
+       ========================= -->
+  <main class="max-w-6xl mx-auto px-4 py-8 grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+    <!-- LEFT: Forms (Contact + Feedback) -->
+    <section class="lg:col-span-2 space-y-6">
+
+      <!-- Contact Form -->
+      <div class="bg-white rounded-lg shadow p-6">
+        <!-- Section comment: Contact Form -->
+        <h2 class="text-xl font-semibold mb-2">Contact Us</h2>
+        <p class="text-sm text-slate-500 mb-4">Have a question or need support? Use the contact form and we'll get back to you.</p>
+
+        <form id="contactForm" class="space-y-3" novalidate>
+          <input type="hidden" name="formType" value="contact">
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label class="text-sm">Full name</label>
+              <input id="contactName" name="name" type="text" class="mt-1 block w-full px-3 py-2 rounded border" placeholder="Your full name" required>
+              <p id="contactNameError" class="text-xs text-rose-600 hidden">Please enter your name.</p>
+            </div>
+            <div>
+              <label class="text-sm">Email</label>
+              <input id="contactEmail" name="email" type="email" class="mt-1 block w-full px-3 py-2 rounded border" placeholder="you@example.com" required>
+              <p id="contactEmailError" class="text-xs text-rose-600 hidden">Please enter a valid email.</p>
+            </div>
+          </div>
+
+          <div>
+            <label class="text-sm">Subject</label>
+            <input id="contactSubject" name="subject" type="text" class="mt-1 block w-full px-3 py-2 rounded border" placeholder="Subject" required>
+          </div>
+
+          <div>
+            <label class="text-sm">Message</label>
+            <textarea id="contactMessage" name="message" rows="5" class="mt-1 block w-full px-3 py-2 rounded border" placeholder="Describe your question or issue..." required></textarea>
+          </div>
+
+          <div>
+            <label class="text-sm">Attachment (optional)</label>
+            <input id="contactAttachment" type="file" accept=".png,.jpg,.jpeg,.pdf,.doc,.docx" class="mt-1 block w-full text-sm" />
+            <div id="contactUploadProgress" class="text-xs text-slate-500 mt-1 hidden">Uploading: <span id="contactUploadPct">0%</span></div>
+          </div>
+
+          <div class="flex items-center gap-3">
+            <button id="sendContactBtn" type="submit" class="px-4 py-2 bg-indigo-600 text-white rounded">Send Contact</button>
+            <button id="resetContactBtn" type="button" class="px-3 py-2 bg-slate-100 rounded">Reset</button>
+            <div id="contactStatus" class="text-sm text-emerald-600 hidden">Sent</div>
+          </div>
+        </form>
+      </div>
+
+      <!-- Feedback Form -->
+      <div class="bg-white rounded-lg shadow p-6">
+        <!-- Section comment: Feedback Form -->
+        <h2 class="text-xl font-semibold mb-2">Send Feedback</h2>
+        <p class="text-sm text-slate-500 mb-4">Share your thoughts or rate your experience.</p>
+
+        <form id="feedbackForm" class="space-y-3" novalidate>
+          <input type="hidden" name="formType" value="feedback">
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label class="text-sm">Name</label>
+              <input id="fbName" type="text" class="mt-1 block w-full px-3 py-2 rounded border" placeholder="Your name">
+            </div>
+            <div>
+              <label class="text-sm">Email</label>
+              <input id="fbEmail" type="email" class="mt-1 block w-full px-3 py-2 rounded border" placeholder="you@example.com">
+              <p id="fbEmailError" class="text-xs text-rose-600 hidden">Enter a valid email to receive a reply.</p>
+            </div>
+          </div>
+
+          <div>
+            <label class="text-sm">Rating</label>
+            <div id="rating" class="flex items-center gap-2 mt-1">
+              <!-- 5 star rating -->
+              <svg data-value="1" class="star w-6 h-6 text-slate-300" fill="currentColor" viewBox="0 0 24 24"><path d="M12 .587l3.668 7.57 8.332 1.151-6.064 5.696 1.472 8.23L12 18.896 4.592 23.234l1.472-8.23L.001 9.307l8.332-1.151z"/></svg>
+              <svg data-value="2" class="star w-6 h-6 text-slate-300" fill="currentColor" viewBox="0 0 24 24"><path d="M12 .587l3.668 7.57 8.332 1.151-6.064 5.696 1.472 8.23L12 18.896 4.592 23.234l1.472-8.23L.001 9.307l8.332-1.151z"/></svg>
+              <svg data-value="3" class="star w-6 h-6 text-slate-300" fill="currentColor" viewBox="0 0 24 24"><path d="M12 .587l3.668 7.57 8.332 1.151-6.064 5.696 1.472 8.23L12 18.896 4.592 23.234l1.472-8.23L.001 9.307l8.332-1.151z"/></svg>
+              <svg data-value="4" class="star w-6 h-6 text-slate-300" fill="currentColor" viewBox="0 0 24 24"><path d="M12 .587l3.668 7.57 8.332 1.151-6.064 5.696 1.472 8.23L12 18.896 4.592 23.234l1.472-8.23L.001 9.307l8.332-1.151z"/></svg>
+              <svg data-value="5" class="star w-6 h-6 text-slate-300" fill="currentColor" viewBox="0 0 24 24"><path d="M12 .587l3.668 7.57 8.332 1.151-6.064 5.696 1.472 8.23L12 18.896 4.592 23.234l1.472-8.23L.001 9.307l8.332-1.151z"/></svg>
+              <div id="ratingValue" class="text-sm text-slate-500 ml-2">0/5</div>
+            </div>
+          </div>
+
+          <div>
+            <label class="text-sm">Feedback</label>
+            <textarea id="fbMessage" rows="4" class="mt-1 block w-full px-3 py-2 rounded border" placeholder="What did you like? What can we improve?"></textarea>
+          </div>
+
+          <div>
+            <label class="text-sm">Attachment (optional)</label>
+            <input id="fbAttachment" type="file" accept=".png,.jpg,.jpeg,.pdf" class="mt-1 block w-full text-sm" />
+            <div id="fbUploadProgress" class="text-xs text-slate-500 mt-1 hidden">Uploading: <span id="fbUploadPct">0%</span></div>
+          </div>
+
+          <div class="flex items-center gap-3">
+            <button id="sendFeedbackBtn" type="submit" class="px-4 py-2 bg-emerald-600 text-white rounded">Send Feedback</button>
+            <button id="resetFeedbackBtn" type="button" class="px-3 py-2 bg-slate-100 rounded">Reset</button>
+            <div id="feedbackStatus" class="text-sm text-emerald-600 hidden">Thanks!</div>
+          </div>
+        </form>
+      </div>
+
+    </section>
+
+    <!-- RIGHT: FAQ, Support, Recent Feedback -->
+    <aside class="space-y-6">
+
+      <!-- FAQ -->
+      <div class="bg-white rounded-lg shadow p-4">
+        <!-- Section comment: FAQ Accordion -->
+        <h3 class="font-semibold mb-3">Frequently Asked Questions</h3>
+        <div id="faqList" class="space-y-2">
+          <!-- FAQ item (example) -->
+          <div class="faq-item border rounded">
+            <button class="w-full text-left px-4 py-3 faq-toggle flex items-center justify-between">
+              <div>
+                <div class="font-medium">How do I borrow a book?</div>
+                <div class="text-xs text-slate-500">Steps to borrow from the library</div>
+              </div>
+              <div class="text-slate-400">+</div>
+            </button>
+            <div class="faq-content px-4 py-3 text-sm text-slate-600">
+              Search for the book, go to its page and click "Borrow" if available. You'll receive confirmation and due date.
+            </div>
+          </div>
+
+          <div class="faq-item border rounded">
+            <button class="w-full text-left px-4 py-3 faq-toggle flex items-center justify-between">
+              <div>
+                <div class="font-medium">How do I report an issue?</div>
+                <div class="text-xs text-slate-500">Use the contact form</div>
+              </div>
+              <div class="text-slate-400">+</div>
+            </button>
+            <div class="faq-content px-4 py-3 text-sm text-slate-600">
+              Use the Contact Us form on the left to describe the problem and attach screenshots or files if helpful.
+            </div>
+          </div>
+
+          <div class="faq-item border rounded">
+            <button class="w-full text-left px-4 py-3 faq-toggle flex items-center justify-between">
+              <div>
+                <div class="font-medium">Can I change my rating?</div>
+                <div class="text-xs text-slate-500">Update feedback</div>
+              </div>
+              <div class="text-slate-400">+</div>
+            </button>
+            <div class="faq-content px-4 py-3 text-sm text-slate-600">
+              Contact support with your request or submit a new feedback form indicating the change.
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Support Info -->
+      <div class="bg-white rounded-lg shadow p-4">
+        <!-- Section comment: Support -->
+        <h3 class="font-semibold mb-2">Support</h3>
+        <p class="text-sm text-slate-600">For urgent issues, reach out directly:</p>
+        <ul class="mt-3 text-sm text-slate-600 space-y-1">
+          <li>Email: <a href="mailto:support@librasuite.example" class="text-indigo-600">support@librasuite.example</a></li>
+          <li>Phone: +1 (555) 123-4567</li>
+          <li>Live chat: available Mon–Fri, 9am–6pm</li>
+        </ul>
+      </div>
+
+      <!-- Recent Feedback (preview) -->
+      <div class="bg-white rounded-lg shadow p-4">
+        <!-- Section comment: Recent feedback preview -->
+        <h3 class="font-semibold mb-2">Recent Feedback</h3>
+        <div id="recentFeedback" class="space-y-3 text-sm text-slate-600">
+          <div class="text-slate-400">Loading...</div>
+        </div>
+      </div>
+    </aside>
+  </main>
+
+  <!-- =========================
+       SUCCESS POPUP (modal)
+       ========================= -->
+  <div id="successModal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/40 p-4">
+    <div class="bg-white rounded-lg shadow p-6 w-full max-w-md text-center">
+      <div class="text-3xl text-emerald-600 mb-2">✓</div>
+      <h3 id="successTitle" class="text-lg font-semibold">Thank you!</h3>
+      <p id="successMessage" class="text-sm text-slate-600 mt-2">Your message has been submitted. We'll get back to you soon.</p>
+      <div class="mt-4">
+        <button id="successClose" class="px-4 py-2 bg-indigo-600 text-white rounded">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toasts & loading overlay -->
+  <div id="toastContainer" class="fixed bottom-6 right-6 flex flex-col gap-2 z-50"></div>
+  <div id="loadingOverlay" class="fixed inset-0 z-40 hidden items-center justify-center bg-black/20">
+    <div class="bg-white rounded-lg p-6 flex items-center gap-4 shadow">
+      <div class="spinner" aria-hidden="true"></div>
+      <div>
+        <div class="font-medium">Working…</div>
+        <div class="text-sm text-slate-500">Uploading or sending data</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Firebase SDKs (compat) -->
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-storage-compat.js"></script>
+
+  <script>
+    /*************************************************************************
+      Firebase configuration - REPLACE with your project's values
+    *************************************************************************/
+    const firebaseConfig = {
+      apiKey: "AIzaSyBBxENou0wJoiIALCm27TvDQEKHiGdlVf4",
+      authDomain: "digital-library-3cb1c.firebaseapp.com",
+      databaseURL: "https://digital-library-3cb1c-default-rtdb.asia-southeast1.firebasedatabase.app",
+      projectId: "digital-library-3cb1c",
+      storageBucket: "digital-library-3cb1c.firebasestorage.app",
+      messagingSenderId: "3671589649",
+      appId: "1:3671589649:web:83e9e90236f6a88f07c2b0",
+    };
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+    const storage = firebase.storage();
+
+    /*************************************************************************
+      DOM references
+    *************************************************************************/
+    const contactForm = document.getElementById('contactForm');
+    const contactName = document.getElementById('contactName');
+    const contactEmail = document.getElementById('contactEmail');
+    const contactSubject = document.getElementById('contactSubject');
+    const contactMessage = document.getElementById('contactMessage');
+    const contactAttachment = document.getElementById('contactAttachment');
+    const contactUploadProgress = document.getElementById('contactUploadProgress');
+    const contactUploadPct = document.getElementById('contactUploadPct');
+    const sendContactBtn = document.getElementById('sendContactBtn');
+    const resetContactBtn = document.getElementById('resetContactBtn');
+
+    const feedbackForm = document.getElementById('feedbackForm');
+    const fbName = document.getElementById('fbName');
+    const fbEmail = document.getElementById('fbEmail');
+    const fbMessage = document.getElementById('fbMessage');
+    const fbAttachment = document.getElementById('fbAttachment');
+    const fbUploadProgress = document.getElementById('fbUploadProgress');
+    const fbUploadPct = document.getElementById('fbUploadPct');
+    const sendFeedbackBtn = document.getElementById('sendFeedbackBtn');
+    const resetFeedbackBtn = document.getElementById('resetFeedbackBtn');
+
+    const ratingStars = document.querySelectorAll('#rating .star');
+    const ratingValueEl = document.getElementById('ratingValue');
+
+    const recentFeedbackEl = document.getElementById('recentFeedback');
+
+    const successModal = document.getElementById('successModal');
+    const successClose = document.getElementById('successClose');
+    const successTitle = document.getElementById('successTitle');
+    const successMessage = document.getElementById('successMessage');
+
+    const toastContainer = document.getElementById('toastContainer');
+    const loadingOverlay = document.getElementById('loadingOverlay');
+
+    const contactNameError = document.getElementById('contactNameError');
+    const contactEmailError = document.getElementById('contactEmailError');
+    const fbEmailError = document.getElementById('fbEmailError');
+
+    /*************************************************************************
+      Utilities: toasts, loading, validation helpers
+    *************************************************************************/
+    function showLoading(on = true) { loadingOverlay.classList.toggle('hidden', !on); }
+    function showToast(message, type = 'success', duration = 3000) {
+      const el = document.createElement('div');
+      el.className = 'toast-enter px-4 py-2 rounded shadow flex items-center gap-3 max-w-sm ' +
+        (type === 'success' ? 'bg-emerald-50 text-emerald-800 border border-emerald-100' :
+         type === 'error' ? 'bg-rose-50 text-rose-800 border border-rose-100' :
+         'bg-sky-50 text-sky-800 border border-sky-100');
+      el.innerHTML = `<div class="text-sm">${message}</div>`;
+      toastContainer.appendChild(el);
+      requestAnimationFrame(() => el.classList.add('toast-show'));
+      setTimeout(() => { el.classList.remove('toast-show'); setTimeout(() => el.remove(), 300); }, duration);
+    }
+
+    function isValidEmail(email) {
+      if (!email) return false;
+      const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      return re.test(String(email).toLowerCase());
+    }
+
+    function escapeHtml(s='') { return String(s||'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;'); }
+
+    /*************************************************************************
+      Ratings: interactive star rating
+      - Clicking a star sets rating; store numeric 1-5 in ratingValue
+    *************************************************************************/
+    let ratingValue = 0;
+    function updateStarUI() {
+      ratingStars.forEach(star => {
+        const v = Number(star.dataset.value);
+        if (v <= ratingValue) star.classList.add('text-amber-400'); else star.classList.remove('text-amber-400');
+      });
+      ratingValueEl.textContent = `${ratingValue}/5`;
+    }
+    ratingStars.forEach(star => {
+      star.addEventListener('click', () => {
+        ratingValue = Number(star.dataset.value);
+        updateStarUI();
+      });
+    });
+    updateStarUI();
+
+    /*************************************************************************
+      Save functions
+      - saveContact: uploads attachment (optional) to storage, then writes metadata to /contacts and /feedback (for admin)
+      - saveFeedback: similar flow but writes to /feedback
+    *************************************************************************/
+    const contactsRef = db.ref('contacts');
+    const feedbackRef = db.ref('feedback');
+
+    // generic upload helper: returns { url, path } or null
+    async function uploadAttachment(file, destFolder) {
+      if (!file) return null;
+      const maxMB = 20;
+      if (file.size > maxMB * 1024 * 1024) throw new Error('File too large (max ' + maxMB + 'MB)');
+      const filename = file.name.replaceAll(/\s+/g, '_');
+      const path = `${destFolder}/${Date.now()}_${filename}`;
+      const ref = storage.ref(path);
+      const task = ref.put(file);
+      return new Promise((resolve, reject) => {
+        task.on('state_changed', snap => {
+          const pct = Math.round((snap.bytesTransferred / snap.totalBytes) * 100);
+          // progress UI handled by caller via events
+          resolve.progress = pct;
+        }, reject, async () => {
+          try {
+            const url = await ref.getDownloadURL();
+            resolve({ url, path });
+          } catch (err) {
+            reject(err);
+          }
+        });
+      });
+    }
+
+    // tailored upload with progress UI integration
+    function uploadWithProgress(file, folder, progressCallback) {
+      if (!file) return Promise.resolve(null);
+      const filename = file.name.replaceAll(/\s+/g, '_');
+      const path = `${folder}/${Date.now()}_${filename}`;
+      const ref = storage.ref(path);
+      const task = ref.put(file);
+      return new Promise((resolve, reject) => {
+        task.on('state_changed', snap => {
+          const pct = Math.round((snap.bytesTransferred / snap.totalBytes) * 100);
+          progressCallback(pct);
+        }, reject, async () => {
+          try {
+            const url = await ref.getDownloadURL();
+            resolve({ url, path });
+          } catch (err) { reject(err); }
+        });
+      });
+    }
+
+    // Contact form handler
+    contactForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      // basic validation
+      const name = contactName.value.trim();
+      const email = contactEmail.value.trim();
+      const subject = contactSubject.value.trim();
+      const message = contactMessage.value.trim();
+
+      contactNameError.classList.toggle('hidden', !!name);
+      if (!name) { contactNameError.classList.remove('hidden'); return; }
+
+      const validEmail = isValidEmail(email);
+      contactEmailError.classList.toggle('hidden', validEmail);
+      if (!validEmail) { contactEmailError.classList.remove('hidden'); return; }
+
+      if (!subject || !message) { showToast('Subject and message are required', 'error'); return; }
+
+      const file = contactAttachment.files[0] || null;
+
+      try {
+        showLoading(true);
+        // upload if file
+        let attachment = null;
+        if (file) {
+          contactUploadProgress.classList.remove('hidden');
+          const result = await uploadWithProgress(file, 'contact_attachments', (pct) => contactUploadPct.textContent = pct + '%');
+          attachment = result; // {url, path}
+          contactUploadPct.textContent = '100%';
+        }
+
+        // write to /contacts for support team
+        const newRef = contactsRef.push();
+        const payload = {
+          id: newRef.key,
+          type: 'contact',
+          name,
+          email,
+          subject,
+          message,
+          attachmentURL: attachment ? attachment.url : '',
+          attachmentPath: attachment ? attachment.path : '',
+          createdAt: Date.now()
+        };
+        await newRef.set(payload);
+
+        // For convenience, also add to /feedback for aggregated view
+        const fbRef = feedbackRef.push();
+        await fbRef.set({ ...payload, formType: 'contact' });
+
+        // show success modal
+        successTitle.textContent = 'Contact sent';
+        successMessage.textContent = 'Your message has been received. Support will contact you at ' + email + ' if necessary.';
+        successModal.classList.remove('hidden');
+        showToast('Contact submitted', 'success');
+        // reset
+        contactForm.reset();
+        contactUploadProgress.classList.add('hidden');
+      } catch (err) {
+        console.error(err); showToast('Failed to submit contact: ' + (err.message || ''), 'error');
+      } finally {
+        showLoading(false);
+      }
+    });
+
+    resetContactBtn.addEventListener('click', () => {
+      contactForm.reset();
+      contactUploadProgress.classList.add('hidden');
+      contactNameError.classList.add('hidden');
+      contactEmailError.classList.add('hidden');
+    });
+
+    // Feedback form handler
+    feedbackForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const name = fbName.value.trim();
+      const email = fbEmail.value.trim();
+      const message = fbMessage.value.trim();
+      const file = fbAttachment.files[0] || null;
+
+      // optional email, but if provided validate
+      if (email && !isValidEmail(email)) { fbEmailError.classList.remove('hidden'); return; }
+      fbEmailError.classList.add('hidden');
+
+      // rating value may be 0
+      const rating = ratingValue || 0;
+
+      if (!message) { showToast('Please enter feedback message', 'error'); return; }
+
+      try {
+        showLoading(true);
+        let attachment = null;
+        if (file) {
+          fbUploadProgress.classList.remove('hidden');
+          const result = await uploadWithProgress(file, 'feedback_attachments', (pct) => fbUploadPct.textContent = pct + '%');
+          attachment = result;
+          fbUploadPct.textContent = '100%';
+        }
+
+        const ref = feedbackRef.push();
+        const payload = {
+          id: ref.key,
+          name,
+          email,
+          message,
+          rating,
+          attachmentURL: attachment ? attachment.url : '',
+          attachmentPath: attachment ? attachment.path : '',
+          createdAt: Date.now()
+        };
+        await ref.set(payload);
+
+        successTitle.textContent = 'Feedback submitted';
+        successMessage.textContent = 'Thank you for your feedback — it helps us improve.';
+        successModal.classList.remove('hidden');
+        showToast('Feedback submitted', 'success');
+
+        feedbackForm.reset();
+        ratingValue = 0;
+        updateStarUI();
+        fbUploadProgress.classList.add('hidden');
+      } catch (err) {
+        console.error(err); showToast('Feedback submission failed: ' + (err.message || ''), 'error');
+      } finally {
+        showLoading(false);
+      }
+    });
+
+    resetFeedbackBtn.addEventListener('click', () => {
+      feedbackForm.reset();
+      fbUploadProgress.classList.add('hidden');
+      ratingValue = 0; updateStarUI();
+      fbEmailError.classList.add('hidden');
+    });
+
+    successClose.addEventListener('click', () => successModal.classList.add('hidden'));
+
+    /*************************************************************************
+      FAQ accordion behavior
+    *************************************************************************/
+    document.querySelectorAll('.faq-toggle').forEach(toggle => {
+      toggle.addEventListener('click', () => {
+        const item = toggle.closest('.faq-item');
+        item.classList.toggle('faq-open');
+        const sign = toggle.querySelector('div:last-child');
+        sign.textContent = item.classList.contains('faq-open') ? '−' : '+';
+      });
+    });
+
+    /*************************************************************************
+      Recent feedback preview (listen to /feedback)
+    *************************************************************************/
+    function renderRecentFeedback(snapshot) {
+      const data = snapshot.val() || {};
+      const entries = Object.values(data).sort((a,b) => (b.createdAt||0) - (a.createdAt||0)).slice(0,6);
+      recentFeedbackEl.innerHTML = '';
+      if(entries.length === 0) {
+        recentFeedbackEl.innerHTML = '<div class="text-sm text-slate-500">No feedback yet</div>';
+        return;
+      }
+      entries.forEach(e => {
+        const div = document.createElement('div');
+        div.className = 'p-3 bg-white rounded shadow text-sm';
+        div.innerHTML = `<div class="flex items-start justify-between">
+            <div>
+              <div class="font-medium">${escapeHtml(e.name || 'Anonymous')}</div>
+              <div class="text-xs text-slate-500">${escapeHtml(e.email || '')}</div>
+            </div>
+            <div class="text-xs text-slate-400">${new Date(e.createdAt).toLocaleDateString()}</div>
+          </div>
+          <div class="mt-2 text-sm text-slate-600">${escapeHtml((e.message || '').slice(0,120))}${(e.message && e.message.length>120)?'...':''}</div>
+          ${e.rating ? `<div class="mt-2 text-xs text-amber-500">Rating: ${e.rating}/5</div>` : ''}`;
+        recentFeedbackEl.appendChild(div);
+      });
+    }
+
+    // realtime listener
+    feedbackRef.limitToLast(50).on('value', (snap) => {
+      renderRecentFeedback(snap);
+    }, (err) => {
+      console.error(err);
+      showToast('Failed to read recent feedback', 'error');
+    });
+
+    /*************************************************************************
+      Rating UI helper (reuse star update used earlier)
+    *************************************************************************/
+    function updateStarUI() {
+      ratingStars.forEach(star => {
+        const v = Number(star.dataset.value);
+        if (v <= ratingValue) star.classList.add('text-amber-400'); else star.classList.remove('text-amber-400');
+      });
+      ratingValueEl.textContent = `${ratingValue}/5`;
+    }
+    // ensure ratingValue variable declared earlier; set default
+    if (typeof ratingValue === 'undefined') { var ratingValue = 0; }
+    updateStarUI();
+
+    /*************************************************************************
+      Accessibility: basic keyboard support for stars
+    *************************************************************************/
+    ratingStars.forEach(star => {
+      star.setAttribute('tabindex', '0');
+      star.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          ratingValue = Number(star.dataset.value);
+          updateStarUI();
+        }
+      });
+    });
+
+    /*************************************************************************
+      Small initialization & instructions
+    *************************************************************************/
+    console.info('Feedback Module initialized. Replace firebaseConfig with your values and secure your DB/storage rules in production.');
+  </script>
+</body>
+</html>

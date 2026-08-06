@@ -1,0 +1,643 @@
+<!doctype html>
+<html lang="en" class="scroll-smooth">
+<head>
+  <!--
+    Reports Module - Single HTML file
+    Tech:
+      - HTML5, Tailwind CSS (CDN)
+      - Advanced JavaScript (ES6+)
+      - Firebase Realtime Database (compat SDK)
+      - Chart.js for charts
+      - jsPDF + html2canvas for PDF export
+    Features:
+      - Book Report, Borrow Report, User Report, Fine Report
+      - Date range filters, search/filter controls
+      - Charts & Statistics
+      - Export CSV (current visible table)
+      - Download PDF (capture report area)
+      - Print Report (print-friendly view)
+      - Responsive dashboard layout
+    IMPORTANT: Replace firebaseConfig with your Firebase project credentials.
+    For production, secure DB writes/reads with Firebase Rules and require authenticated admin access.
+  -->
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>LibraSuite — Reports Module</title>
+
+  <!-- Google font -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+
+  <!-- Tailwind CDN config -->
+  <script>
+    window.tailwind = { config: { darkMode: 'class' } }
+  </script>
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- Chart.js and PDF libs -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+
+  <style>
+    body { font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial; }
+    .toast-enter { transform: translateY(8px); opacity: 0; }
+    .toast-show { transform: translateY(0); opacity:1; transition: all .28s cubic-bezier(.2,.9,.3,1); }
+    .spinner { border: 4px solid rgba(0,0,0,0.08); border-top-color: rgba(37,99,235,1); border-radius:9999px; width:36px; height:36px; animation: spin .9s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .printable { background: white; padding: 12px; }
+    @media print {
+      body * { visibility: hidden; }
+      #printArea, #printArea * { visibility: visible; }
+      #printArea { position: absolute; left:0; top:0; width:100%; }
+    }
+  </style>
+</head>
+<body class="bg-gray-50 text-slate-800">
+
+  <!-- =========================
+       HEADER
+       ========================= -->
+  <header class="bg-white shadow sticky top-0 z-40">
+    <div class="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <svg class="w-8 h-8 text-indigo-600" viewBox="0 0 24 24" fill="none"><path d="M3 5.5C3 4.119 4.12 3 5.5 3h11" stroke="currentColor" stroke-width="1.2"/></svg>
+        <div>
+          <div class="text-lg font-semibold">LibraSuite</div>
+          <div class="text-xs text-slate-400 -mt-1">Reports</div>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-3">
+        <div id="lastUpdated" class="text-sm text-slate-500">Last updated: —</div>
+        <button id="refreshBtn" class="px-3 py-1 bg-slate-100 rounded">Refresh</button>
+      </div>
+    </div>
+  </header>
+
+  <!-- =========================
+       MAIN LAYOUT
+       ========================= -->
+  <main class="max-w-7xl mx-auto px-4 py-8">
+    <!-- Filters & Controls -->
+    <section class="bg-white rounded-lg shadow p-4 mb-6">
+      <!-- Section comment: Global filters and report selector -->
+      <div class="flex flex-col md:flex-row md:items-end md:gap-6">
+        <div class="flex-1 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          <div>
+            <label class="text-xs text-slate-500">Report</label>
+            <select id="reportSelect" class="mt-1 block w-full px-3 py-2 rounded border">
+              <option value="book">Book Report</option>
+              <option value="borrow">Borrow Report</option>
+              <option value="user">User Report</option>
+              <option value="fine">Fine Report</option>
+            </select>
+          </div>
+
+          <div>
+            <label class="text-xs text-slate-500">From</label>
+            <input id="fromDate" type="date" class="mt-1 block w-full px-3 py-2 rounded border" />
+          </div>
+
+          <div>
+            <label class="text-xs text-slate-500">To</label>
+            <input id="toDate" type="date" class="mt-1 block w-full px-3 py-2 rounded border" />
+          </div>
+
+          <div>
+            <label class="text-xs text-slate-500">Search / Filter</label>
+            <input id="quickFilter" type="search" placeholder="title, author, user..." class="mt-1 block w-full px-3 py-2 rounded border" />
+          </div>
+        </div>
+
+        <div class="mt-3 md:mt-0 flex items-center gap-2">
+          <button id="applyBtn" class="px-4 py-2 bg-indigo-600 text-white rounded">Apply</button>
+          <button id="exportCsv" class="px-3 py-2 bg-slate-100 rounded">Export CSV</button>
+          <button id="downloadPdf" class="px-3 py-2 bg-slate-100 rounded">Download PDF</button>
+          <button id="printReportBtn" class="px-3 py-2 bg-slate-100 rounded">Print</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Stats Cards -->
+    <section id="statsCards" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+      <!-- Section comment: Dashboard statistic cards -->
+      <div class="bg-white rounded-lg p-4 shadow">
+        <div class="text-sm text-slate-500">Total Books</div>
+        <div id="statTotalBooks" class="text-2xl font-bold mt-2">0</div>
+      </div>
+
+      <div class="bg-white rounded-lg p-4 shadow">
+        <div class="text-sm text-slate-500">Total Borrows</div>
+        <div id="statTotalBorrows" class="text-2xl font-bold mt-2">0</div>
+      </div>
+
+      <div class="bg-white rounded-lg p-4 shadow">
+        <div class="text-sm text-slate-500">Total Users</div>
+        <div id="statTotalUsers" class="text-2xl font-bold mt-2">0</div>
+      </div>
+
+      <div class="bg-white rounded-lg p-4 shadow">
+        <div class="text-sm text-slate-500">Fine Collected</div>
+        <div id="statFineCollected" class="text-2xl font-bold mt-2">$0.00</div>
+      </div>
+    </section>
+
+    <!-- Charts -->
+    <section class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
+      <!-- Books by Category -->
+      <div class="bg-white rounded-lg p-4 shadow">
+        <div class="flex items-center justify-between">
+          <h4 class="font-semibold">Books by Category</h4>
+        </div>
+        <canvas id="chartBooksByCategory" class="mt-3"></canvas>
+      </div>
+
+      <!-- Borrows Over Time -->
+      <div class="bg-white rounded-lg p-4 shadow">
+        <h4 class="font-semibold">Borrows Over Time</h4>
+        <canvas id="chartBorrowsOverTime" class="mt-3"></canvas>
+      </div>
+
+      <!-- Fine by Day -->
+      <div class="bg-white rounded-lg p-4 shadow">
+        <h4 class="font-semibold">Fines Collected (by day)</h4>
+        <canvas id="chartFinesByDay" class="mt-3"></canvas>
+      </div>
+    </section>
+
+    <!-- Printable Report Area -->
+    <section id="printArea" class="printable">
+      <!-- Section comment: Report content area (tables) -->
+      <div id="reportHeader" class="flex items-center justify-between mb-4">
+        <div>
+          <h2 id="reportTitle" class="text-xl font-bold">Book Report</h2>
+          <div id="reportMeta" class="text-sm text-slate-500">Range: —</div>
+        </div>
+
+        <div class="text-sm text-slate-400" id="reportGenerated">Generated: —</div>
+      </div>
+
+      <!-- Table container -->
+      <div id="reportTableContainer" class="bg-white rounded-lg p-4 shadow">
+        <!-- Table will be injected here based on report type -->
+        <div id="reportTableWrapper" class="overflow-auto">
+          <table id="reportTable" class="min-w-full divide-y divide-slate-100">
+            <!-- Dynamic content -->
+            <thead id="reportHead"></thead>
+            <tbody id="reportBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Toasts and Loading -->
+  <div id="toastContainer" class="fixed bottom-6 right-6 flex flex-col gap-2 z-50"></div>
+  <div id="loadingOverlay" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/20">
+    <div class="bg-white rounded-lg p-6 flex items-center gap-4 shadow">
+      <div class="spinner" aria-hidden="true"></div>
+      <div>
+        <div class="font-medium">Preparing report…</div>
+        <div class="text-sm text-slate-500">This may take a moment</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Firebase compat SDKs (Realtime DB) -->
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
+
+  <script>
+    /**************************************************************************
+     CONFIG: replace these values with your Firebase project's credentials
+    **************************************************************************/
+    const firebaseConfig = {
+      apiKey: "AIzaSyBBxENou0wJoiIALCm27TvDQEKHiGdlVf4",
+      authDomain: "digital-library-3cb1c.firebaseapp.com",
+      databaseURL: "https://digital-library-3cb1c-default-rtdb.asia-southeast1.firebasedatabase.app",
+      projectId: "digital-library-3cb1c",
+      storageBucket: "digital-library-3cb1c.firebasestorage.app",
+      messagingSenderId: "3671589649",
+      appId: "1:3671589649:web:83e9e90236f6a88f07c2b0",
+    };
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+
+    /**************************************************************************
+     DOM refs
+    **************************************************************************/
+    const reportSelect = document.getElementById('reportSelect');
+    const fromDate = document.getElementById('fromDate');
+    const toDate = document.getElementById('toDate');
+    const quickFilter = document.getElementById('quickFilter');
+    const applyBtn = document.getElementById('applyBtn');
+    const exportCsvBtn = document.getElementById('exportCsv');
+    const downloadPdfBtn = document.getElementById('downloadPdf');
+    const printReportBtn = document.getElementById('printReportBtn');
+    const refreshBtn = document.getElementById('refreshBtn');
+
+    const statTotalBooks = document.getElementById('statTotalBooks');
+    const statTotalBorrows = document.getElementById('statTotalBorrows');
+    const statTotalUsers = document.getElementById('statTotalUsers');
+    const statFineCollected = document.getElementById('statFineCollected');
+    const lastUpdated = document.getElementById('lastUpdated');
+
+    const chartBooksByCategory = document.getElementById('chartBooksByCategory').getContext('2d');
+    const chartBorrowsOverTime = document.getElementById('chartBorrowsOverTime').getContext('2d');
+    const chartFinesByDay = document.getElementById('chartFinesByDay').getContext('2d');
+
+    const reportTitle = document.getElementById('reportTitle');
+    const reportMeta = document.getElementById('reportMeta');
+    const reportGenerated = document.getElementById('reportGenerated');
+    const reportHead = document.getElementById('reportHead');
+    const reportBody = document.getElementById('reportBody');
+    const reportTable = document.getElementById('reportTable');
+
+    const toastContainer = document.getElementById('toastContainer');
+    const loadingOverlay = document.getElementById('loadingOverlay');
+
+    /**************************************************************************
+     Utilities
+    **************************************************************************/
+    function showLoading(on = true) { loadingOverlay.classList.toggle('hidden', !on); }
+    function showToast(msg, type='success', dur=3000) {
+      const el = document.createElement('div');
+      el.className = 'toast-enter px-4 py-2 rounded shadow flex items-center gap-3 max-w-sm ' +
+        (type === 'success' ? 'bg-emerald-50 text-emerald-800 border border-emerald-100' :
+         type === 'error' ? 'bg-rose-50 text-rose-800 border border-rose-100' :
+         'bg-sky-50 text-sky-800 border border-sky-100');
+      el.innerHTML = `<div class="text-sm">${msg}</div>`;
+      toastContainer.appendChild(el);
+      requestAnimationFrame(() => el.classList.add('toast-show'));
+      setTimeout(() => { el.classList.remove('toast-show'); setTimeout(()=>el.remove(), 300); }, dur);
+    }
+    function escapeHtml(s='') { return String(s||'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;'); }
+    function dateISO(d) { return d ? new Date(d).toISOString().slice(0,10) : ''; }
+    function formatDate(d) { return d ? new Date(d).toLocaleString() : '—'; }
+    function csvEscape(s='') { if(s==null) return ''; return '"' + String(s).replaceAll('"','""') + '"'; }
+
+    /**************************************************************************
+     Data caches & Chart instances
+    **************************************************************************/
+    let books = {};   // /books
+    let borrows = {}; // /borrows
+    let users = {};   // /users
+
+    let bookCategoryChart = null;
+    let borrowsTimelineChart = null;
+    let finesDayChart = null;
+
+    function initCharts() {
+      bookCategoryChart = new Chart(chartBooksByCategory, {
+        type: 'bar',
+        data: { labels: [], datasets: [{ label: 'Books', data: [], backgroundColor: '#60a5fa' }] },
+        options: { responsive: true, plugins: { legend: { display: false } } }
+      });
+      borrowsTimelineChart = new Chart(chartBorrowsOverTime, {
+        type: 'line',
+        data: { labels: [], datasets: [{ label: 'Borrows', data: [], borderColor: '#34D399', backgroundColor: 'rgba(52,211,153,0.12)', fill: true }] },
+        options: { responsive: true }
+      });
+      finesDayChart = new Chart(chartFinesByDay, {
+        type: 'bar',
+        data: { labels: [], datasets: [{ label: 'Fines', data: [], backgroundColor: '#f97316' }] },
+        options: { responsive: true, plugins: { legend: { display: false } } }
+      });
+    }
+
+    /**************************************************************************
+     Realtime listeners
+    **************************************************************************/
+    const booksRef = db.ref('books');
+    const borrowsRef = db.ref('borrows');
+    const usersRef = db.ref('users');
+
+    booksRef.on('value', snap => {
+      books = snap.val() || {};
+      updateAll();
+    }, err => console.error('booksRef', err));
+
+    borrowsRef.on('value', snap => {
+      borrows = snap.val() || {};
+      updateAll();
+    }, err => console.error('borrowsRef', err));
+
+    usersRef.on('value', snap => {
+      users = snap.val() || {};
+      updateAll();
+    }, err => console.error('usersRef', err));
+
+    /**************************************************************************
+     updateAll: recalc stats, refresh charts; called when any DB node updates
+    **************************************************************************/
+    function updateAll(){
+      lastUpdated.textContent = 'Last updated: ' + new Date().toLocaleString();
+
+      // statistics
+      const totalBooks = Object.keys(books).length;
+      const totalBorrows = Object.keys(borrows).length;
+      const totalUsers = Object.keys(users).length;
+      const totalFine = Object.values(borrows || {}).reduce((s,b) => s + (Number(b && b.fine) || 0), 0);
+
+      statTotalBooks.textContent = totalBooks;
+      statTotalBorrows.textContent = totalBorrows;
+      statTotalUsers.textContent = totalUsers;
+      statFineCollected.textContent = '$' + totalFine.toFixed(2);
+
+      // charts
+      updateCharts();
+    }
+
+    /**************************************************************************
+     updateCharts: Books by Category, Borrows timeline, Fines by day
+    **************************************************************************/
+    function updateCharts() {
+      // Books by category
+      const catCounts = {};
+      Object.values(books || {}).forEach(b => {
+        const c = (b.category || 'Uncategorized');
+        catCounts[c] = (catCounts[c] || 0) + 1;
+      });
+      const catLabels = Object.keys(catCounts);
+      const catData = catLabels.map(l => catCounts[l]);
+
+      if(bookCategoryChart) {
+        bookCategoryChart.data.labels = catLabels;
+        bookCategoryChart.data.datasets[0].data = catData;
+        bookCategoryChart.update();
+      }
+
+      // Borrows over last 30 days
+      const now = Date.now();
+      const dayMs = 24*60*60*1000;
+      const days = Array.from({length:30}, (_,i) => {
+        const ts = now - (29-i)*dayMs;
+        const d = new Date(ts);
+        return { label: `${d.getMonth()+1}/${d.getDate()}`, start: new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime() };
+      });
+      const borrowsPerDay = days.map(d => Object.values(borrows || {}).filter(b => {
+        const t = b && (b.createdAt || 0);
+        return t >= d.start && t < d.start + dayMs;
+      }).length);
+      if(borrowsTimelineChart) {
+        borrowsTimelineChart.data.labels = days.map(d => d.label);
+        borrowsTimelineChart.data.datasets[0].data = borrowsPerDay;
+        borrowsTimelineChart.update();
+      }
+
+      // fines per day (last 30 days)
+      const finesPerDay = days.map(d => Object.values(borrows || {}).reduce((s,b) => {
+        const t = b && (b.returnDate ? new Date(b.returnDate).getTime() : 0);
+        if(t >= d.start && t < d.start + dayMs) return s + (Number(b.fine) || 0);
+        return s;
+      }, 0));
+      if(finesDayChart) {
+        finesDayChart.data.labels = days.map(d => d.label);
+        finesDayChart.data.datasets[0].data = finesPerDay;
+        finesDayChart.update();
+      }
+    }
+
+    /**************************************************************************
+     Report building: depending on selected report type, assemble table data
+    **************************************************************************/
+    function buildReport() {
+      const type = reportSelect.value;
+      const from = fromDate.value ? new Date(fromDate.value) : null;
+      const to = toDate.value ? new Date(toDate.value) : null;
+      const q = (quickFilter.value || '').toLowerCase().trim();
+
+      // helper: date range check
+      const inRange = (timestamp) => {
+        if(!timestamp) return true;
+        const d = new Date(timestamp);
+        if(from && d < from) return false;
+        if(to && d > (new Date(to.getFullYear(), to.getMonth(), to.getDate(),23,59,59))) return false;
+        return true;
+      };
+
+      reportGenerated.textContent = 'Generated: ' + new Date().toLocaleString();
+      reportMeta.textContent = `Range: ${fromDate.value || '—'} → ${toDate.value || '—'} | Filter: ${quickFilter.value || '—'}`;
+
+      if(type === 'book') {
+        reportTitle.textContent = 'Book Report';
+        // Table head
+        reportHead.innerHTML = `<tr>
+            <th class="px-3 py-2 text-left text-xs">Title</th>
+            <th class="px-3 py-2 text-left text-xs">Author</th>
+            <th class="px-3 py-2 text-left text-xs">Category</th>
+            <th class="px-3 py-2 text-left text-xs">Publisher</th>
+            <th class="px-3 py-2 text-left text-xs">Qty</th>
+            <th class="px-3 py-2 text-left text-xs">Available</th>
+            <th class="px-3 py-2 text-left text-xs">Added</th>
+          </tr>`;
+        // body
+        reportBody.innerHTML = '';
+        Object.entries(books || {}).forEach(([id, b]) => {
+          if(!inRange(b.createdAt)) return;
+          const hay = `${b.title||''} ${b.author||''} ${b.category||''} ${b.publisher||''}`.toLowerCase();
+          if(q && !hay.includes(q)) return;
+          const tr = document.createElement('tr');
+          tr.innerHTML = `<td class="px-3 py-2">${escapeHtml(b.title)}</td>
+            <td class="px-3 py-2">${escapeHtml(b.author||'')}</td>
+            <td class="px-3 py-2">${escapeHtml(b.category||'')}</td>
+            <td class="px-3 py-2">${escapeHtml(b.publisher||'')}</td>
+            <td class="px-3 py-2">${Number(b.quantity||0)}</td>
+            <td class="px-3 py-2">${Number(b.available||0)}</td>
+            <td class="px-3 py-2">${b.createdAt ? new Date(b.createdAt).toLocaleString() : '—'}</td>`;
+          reportBody.appendChild(tr);
+        });
+      } else if(type === 'borrow') {
+        reportTitle.textContent = 'Borrow Report';
+        reportHead.innerHTML = `<tr>
+            <th class="px-3 py-2 text-left text-xs">Borrower</th>
+            <th class="px-3 py-2 text-left text-xs">Book</th>
+            <th class="px-3 py-2 text-left text-xs">Issue Date</th>
+            <th class="px-3 py-2 text-left text-xs">Due Date</th>
+            <th class="px-3 py-2 text-left text-xs">Return Date</th>
+            <th class="px-3 py-2 text-left text-xs">Status</th>
+            <th class="px-3 py-2 text-left text-xs">Fine</th>
+          </tr>`;
+        reportBody.innerHTML = '';
+        Object.entries(borrows || {}).forEach(([id, r]) => {
+          if(!inRange(r.createdAt)) {
+            // also allow using issue/return date within range if createdAt not relevant
+            const use = (from || to) ? (inRange(r.issueDate) || inRange(r.returnDate)) : true;
+            if(!use) return;
+          }
+          const hay = `${r.borrowerName||''} ${r.bookTitle||''}`.toLowerCase();
+          if(q && !hay.includes(q)) return;
+          const tr = document.createElement('tr');
+          tr.innerHTML = `<td class="px-3 py-2">${escapeHtml(r.borrowerName||'')}</td>
+            <td class="px-3 py-2">${escapeHtml(r.bookTitle||'')}</td>
+            <td class="px-3 py-2">${r.issueDate ? new Date(r.issueDate).toLocaleString() : '—'}</td>
+            <td class="px-3 py-2">${r.dueDate ? new Date(r.dueDate).toLocaleDateString() : '—'}</td>
+            <td class="px-3 py-2">${r.returnDate ? new Date(r.returnDate).toLocaleString() : '—'}</td>
+            <td class="px-3 py-2">${escapeHtml(r.status||'')}</td>
+            <td class="px-3 py-2">$${Number(r.fine||0).toFixed(2)}</td>`;
+          reportBody.appendChild(tr);
+        });
+      } else if(type === 'user') {
+        reportTitle.textContent = 'User Report';
+        reportHead.innerHTML = `<tr>
+            <th class="px-3 py-2 text-left text-xs">Name</th>
+            <th class="px-3 py-2 text-left text-xs">Email</th>
+            <th class="px-3 py-2 text-left text-xs">Role</th>
+            <th class="px-3 py-2 text-left text-xs">Registered</th>
+          </tr>`;
+        reportBody.innerHTML = '';
+        Object.entries(users || {}).forEach(([id,u]) => {
+          if(!inRange(u.createdAt)) return;
+          const hay = `${u.name||''} ${u.email||''}`.toLowerCase();
+          if(q && !hay.includes(q)) return;
+          const tr = document.createElement('tr');
+          tr.innerHTML = `<td class="px-3 py-2">${escapeHtml(u.name||'')}</td>
+            <td class="px-3 py-2">${escapeHtml(u.email||'')}</td>
+            <td class="px-3 py-2">${escapeHtml(u.role||'user')}</td>
+            <td class="px-3 py-2">${u.createdAt ? new Date(u.createdAt).toLocaleString() : '—'}</td>`;
+          reportBody.appendChild(tr);
+        });
+      } else if(type === 'fine') {
+        reportTitle.textContent = 'Fine Report';
+        reportHead.innerHTML = `<tr>
+            <th class="px-3 py-2 text-left text-xs">Borrower</th>
+            <th class="px-3 py-2 text-left text-xs">Book</th>
+            <th class="px-3 py-2 text-left text-xs">Return Date</th>
+            <th class="px-3 py-2 text-left text-xs">Fine</th>
+          </tr>`;
+        reportBody.innerHTML = '';
+        Object.entries(borrows || {}).forEach(([id,r]) => {
+          if(!(Number(r.fine) > 0)) return;
+          if(!inRange(r.returnDate)) return;
+          const hay = `${r.borrowerName||''} ${r.bookTitle||''}`.toLowerCase();
+          if(q && !hay.includes(q)) return;
+          const tr = document.createElement('tr');
+          tr.innerHTML = `<td class="px-3 py-2">${escapeHtml(r.borrowerName||'')}</td>
+            <td class="px-3 py-2">${escapeHtml(r.bookTitle||'')}</td>
+            <td class="px-3 py-2">${r.returnDate ? new Date(r.returnDate).toLocaleString() : '—'}</td>
+            <td class="px-3 py-2">$${Number(r.fine||0).toFixed(2)}</td>`;
+          reportBody.appendChild(tr);
+        });
+      }
+    }
+
+    /**************************************************************************
+     Export CSV: capture current table header/body and generate CSV
+    **************************************************************************/
+    function exportTableToCSV(filename = 'report.csv'){
+      // build CSV rows from table header and body
+      const headers = Array.from(reportHead.querySelectorAll('th')).map(th => th.textContent.trim());
+      const rows = [headers];
+      Array.from(reportBody.querySelectorAll('tr')).forEach(tr => {
+        const cols = Array.from(tr.querySelectorAll('td')).map(td => td.textContent.trim());
+        rows.push(cols);
+      });
+      const csv = rows.map(r => r.map(csvEscape).join(',')).join('\n');
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = filename; a.style.display = 'none';
+      document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+      showToast('CSV exported', 'success');
+    }
+
+    /**************************************************************************
+     Download PDF: use html2canvas to capture printArea then jsPDF to save PDF
+    **************************************************************************/
+    async function downloadReportPDF(filename = 'report.pdf') {
+      try {
+        showLoading(true);
+        const node = document.getElementById('printArea');
+        // temporarily enlarge for better capture
+        const scale = 2;
+        const canvas = await html2canvas(node, { scale, useCORS: true, logging: false });
+        const imgData = canvas.toDataURL('image/jpeg', 0.95);
+        const { jsPDF } = window.jspdf;
+        const pdf = new jsPDF('p', 'pt', 'a4');
+        const pageWidth = pdf.internal.pageSize.getWidth();
+        const pageHeight = pdf.internal.pageSize.getHeight();
+        // calculate dimensions
+        const imgProps = { width: canvas.width, height: canvas.height };
+        const ratio = Math.min(pageWidth / imgProps.width, pageHeight / imgProps.height);
+        const imgW = imgProps.width * ratio;
+        const imgH = imgProps.height * ratio;
+        pdf.addImage(imgData, 'JPEG', (pageWidth - imgW) / 2, 20, imgW, imgH);
+        pdf.save(filename);
+        showToast('PDF downloaded', 'success');
+      } catch (err) {
+        console.error(err); showToast('PDF export failed: ' + (err.message || ''), 'error');
+      } finally {
+        showLoading(false);
+      }
+    }
+
+    /**************************************************************************
+     Print report: open print dialog (print styles take effect)
+    **************************************************************************/
+    function printReport() {
+      window.print();
+    }
+
+    /**************************************************************************
+     Hook up UI controls
+    **************************************************************************/
+    applyBtn.addEventListener('click', () => {
+      showLoading(true);
+      setTimeout(() => { buildReport(); showLoading(false); }, 200); // small UX delay
+    });
+
+    exportCsvBtn.addEventListener('click', () => exportTableToCSV('report.csv'));
+    downloadPdfBtn.addEventListener('click', () => downloadReportPDF('report.pdf'));
+    printReportBtn.addEventListener('click', () => printReport());
+    refreshBtn.addEventListener('click', () => { showToast('Refreshing data…', 'info'); /* DB listeners are realtime */ });
+
+    // initialize charts
+    initCharts();
+
+    // initial build once data loads via on() listeners - we'll attach a small init
+    // Run a default build after a delay so realtime initial loads populate charts
+    setTimeout(() => {
+      buildReport();
+      showToast('Reports module ready', 'success');
+    }, 1200);
+
+    /**************************************************************************
+     Small helper: compute summary totals for displayed table (optional)
+    **************************************************************************/
+    function computeCurrentTotals(){
+      // e.g., sum fines in current fine report
+      if(reportSelect.value === 'fine'){
+        let total = 0;
+        Array.from(reportBody.querySelectorAll('tr')).forEach(tr => {
+          const fineCell = tr.children[3] || tr.children[6] || null;
+          if(fineCell){
+            const txt = fineCell.textContent.replace(/[^\d.-]/g,'');
+            total += Number(txt) || 0;
+          }
+        });
+        return total;
+      }
+      return null;
+    }
+
+    /**************************************************************************
+     Small UX: set default date range to last 30 days
+    **************************************************************************/
+    (function setDefaultDates() {
+      const today = new Date();
+      const prior = new Date(); prior.setDate(today.getDate() - 30);
+      fromDate.value = prior.toISOString().slice(0,10);
+      toDate.value = today.toISOString().slice(0,10);
+    })();
+
+    /**************************************************************************
+     Print-friendly handling: ensure report area has adequate styles (handled via CSS)
+    **************************************************************************/
+
+    /**************************************************************************
+     Final note
+    **************************************************************************/
+    console.info('Reports module loaded. Replace firebaseConfig and secure DB rules for production.');
+  </script>
+</body>
+</html>

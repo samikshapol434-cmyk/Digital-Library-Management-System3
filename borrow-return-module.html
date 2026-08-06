@@ -1,0 +1,899 @@
+<!doctype html>
+<html lang="en" class="scroll-smooth">
+<head>
+  <!--
+    Borrow & Return Module (Single HTML file)
+
+    Tech:
+      - HTML5
+      - Tailwind CSS (CDN)
+      - Advanced JavaScript (ES6+)
+      - Firebase Realtime Database (compat SDK for single-file demo)
+
+    Features:
+      - Borrow Book (with issue date, due date)
+      - Return Book (calculates fine automatically)
+      - Fine calculation (configurable rate per day)
+      - Borrow history (all transactions)
+      - Pending / Active borrows
+      - Book status (available, out-of-stock)
+      - Notifications (toasts + overdue list)
+      - Responsive table + cards
+      - CRUD operations on borrow records (create, update, delete)
+      - Real-time updates via Firebase listeners
+
+    IMPORTANT:
+      - Replace firebaseConfig with your Firebase project's credentials.
+      - This demo assumes a /books collection in Realtime DB where each book object has at least:
+        { title, author, quantity, available }
+      - In production, protect writes with proper Firebase Database Rules and require authentication.
+  -->
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>LibraSuite — Borrow & Return</title>
+
+  <!-- Google font -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+
+  <!-- Tailwind CDN -->
+  <script>
+    window.tailwind = { config: { darkMode: 'class' } }
+  </script>
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <style>
+    body { font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial; }
+    .toast-enter { transform: translateY(10px); opacity: 0; }
+    .toast-show { transform: translateY(0); opacity: 1; transition: all .28s cubic-bezier(.2,.9,.3,1); }
+    .spinner { border: 4px solid rgba(0,0,0,0.08); border-top-color: rgba(37,99,235,1); border-radius: 9999px; width: 36px; height: 36px; animation: spin .9s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg);} }
+    .badge { font-size: .75rem; padding: .25rem .5rem; border-radius: .375rem; }
+    .overdue { background:#fee2e2; color:#991b1b; }
+    .active-borrow { background:#ecfdf5; color:#065f46; }
+    .returned { background:#f1f5f9; color:#0f172a; }
+  </style>
+</head>
+<body class="bg-gray-50 text-slate-800">
+
+  <!-- =========================
+       HEADER (Module Title)
+       ========================= -->
+  <header class="bg-white shadow sticky top-0 z-40">
+    <div class="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <svg class="w-8 h-8 text-indigo-600" viewBox="0 0 24 24" fill="none"><path d="M3 5.5C3 4.119 4.12 3 5.5 3h11C18.88 3 20 4.119 20 5.5V19c0 .553-.447 1-1 1H5.5C4.12 20 3 18.881 3 17.5V5.5Z" stroke="currentColor" stroke-width="1.2"/></svg>
+        <div>
+          <div class="text-lg font-semibold">LibraSuite</div>
+          <div class="text-xs text-slate-400 -mt-1">Borrow & Return Management</div>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-3">
+        <div id="stats" class="text-sm text-slate-600">Loading stats…</div>
+      </div>
+    </div>
+  </header>
+
+  <!-- =========================
+       MAIN: Two-column layout
+       Left: Borrow form, quick actions, notifications
+       Right: Borrow records table / filters
+       ========================= -->
+  <main class="max-w-7xl mx-auto px-4 py-8 grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+    <!-- LEFT: Borrow / Return Form & Notifications -->
+    <aside class="space-y-6 lg:col-span-1">
+
+      <!-- Borrow Form -->
+      <div class="bg-white rounded-lg shadow p-6">
+        <!-- Section comment: Borrow Book -->
+        <h2 class="text-lg font-semibold mb-3">Borrow Book</h2>
+        <form id="borrowForm" class="space-y-3">
+          <div>
+            <label class="text-sm">Select Book</label>
+            <select id="bookSelect" class="mt-1 block w-full px-3 py-2 rounded border"></select>
+          </div>
+
+          <div>
+            <label class="text-sm">Borrower Name</label>
+            <input id="borrowerName" type="text" class="mt-1 block w-full px-3 py-2 rounded border" placeholder="User full name" required />
+          </div>
+
+          <div>
+            <label class="text-sm">Borrower Email</label>
+            <input id="borrowerEmail" type="email" class="mt-1 block w-full px-3 py-2 rounded border" placeholder="email@example.com" />
+          </div>
+
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="text-sm">Issue Date</label>
+              <input id="issueDate" type="date" class="mt-1 block w-full px-3 py-2 rounded border" />
+            </div>
+            <div>
+              <label class="text-sm">Duration (days)</label>
+              <input id="durationDays" type="number" min="1" value="14" class="mt-1 block w-full px-3 py-2 rounded border" />
+            </div>
+          </div>
+
+          <div class="flex items-center gap-3">
+            <button id="btnBorrow" type="submit" class="px-4 py-2 bg-indigo-600 text-white rounded">Borrow</button>
+            <button id="btnQuickBorrow" type="button" class="px-4 py-2 bg-slate-100 rounded">Quick Borrow (today)</button>
+          </div>
+        </form>
+      </div>
+
+      <!-- Return / Manage Panel -->
+      <div class="bg-white rounded-lg shadow p-6">
+        <!-- Section comment: Return Book -->
+        <h3 class="text-md font-semibold mb-2">Return / Manage</h3>
+        <div class="space-y-3 text-sm text-slate-600">
+          <div>
+            <label class="text-sm">Select Active Borrow</label>
+            <select id="activeBorrowSelect" class="mt-1 block w-full px-3 py-2 rounded border"></select>
+          </div>
+
+          <div class="flex items-center gap-2">
+            <button id="btnReturn" class="px-4 py-2 bg-emerald-50 text-emerald-700 rounded">Return Selected</button>
+            <button id="btnExtend" class="px-4 py-2 bg-amber-50 text-amber-700 rounded">Extend Due</button>
+            <button id="btnForceReturn" class="px-4 py-2 bg-rose-50 text-rose-700 rounded">Force Return</button>
+          </div>
+
+          <div id="selectedBorrowInfo" class="text-xs text-slate-500"></div>
+        </div>
+      </div>
+
+      <!-- Notifications: Overdue / Pending -->
+      <div class="bg-white rounded-lg shadow p-4">
+        <!-- Section comment: Notifications -->
+        <h3 class="text-md font-semibold mb-2">Notifications</h3>
+        <div id="notifications" class="text-sm space-y-2 text-slate-600">No notifications</div>
+      </div>
+
+      <!-- Config (fine per day) -->
+      <div class="bg-white rounded-lg shadow p-4">
+        <!-- Section comment: Config -->
+        <h3 class="text-md font-semibold mb-2">Settings</h3>
+        <div class="text-sm text-slate-600 space-y-2">
+          <div>
+            <label class="text-sm">Fine per day (currency)</label>
+            <input id="finePerDay" type="number" min="0" step="0.1" value="1.0" class="mt-1 block w-full px-3 py-2 rounded border" />
+          </div>
+          <div class="text-xs text-slate-400">Fine is applied for days overdue on returns.</div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- RIGHT: Borrow Records Table / Filters / History -->
+    <section class="lg:col-span-2 space-y-6">
+
+      <!-- Controls: filter & search -->
+      <div class="bg-white rounded-lg shadow p-4 flex flex-wrap items-center gap-3 justify-between">
+        <!-- Section comment: Filters -->
+        <div class="flex items-center gap-3 flex-1 min-w-0">
+          <input id="search" type="search" placeholder="Search borrower, book title, status..." class="flex-1 px-4 py-2 rounded border" />
+          <button id="clearSearch" class="px-3 py-2 bg-slate-100 rounded hidden">Clear</button>
+        </div>
+
+        <div class="flex items-center gap-2 text-sm text-slate-500">
+          <select id="filterStatus" class="px-3 py-2 rounded border text-sm">
+            <option value="">All statuses</option>
+            <option value="borrowed">Borrowed</option>
+            <option value="returned">Returned</option>
+            <option value="overdue">Overdue</option>
+          </select>
+          <select id="pageSize" class="px-3 py-2 rounded border text-sm">
+            <option value="8">8 / page</option>
+            <option value="20" selected>20 / page</option>
+            <option value="50">50 / page</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Records table -->
+      <div class="bg-white rounded-lg shadow p-4">
+        <!-- Section comment: Borrow Records -->
+        <div class="table-responsive">
+          <table class="min-w-full divide-y divide-slate-100">
+            <thead class="bg-slate-50">
+              <tr>
+                <th class="px-4 py-2 text-left text-xs">Borrower</th>
+                <th class="px-4 py-2 text-left text-xs">Book</th>
+                <th class="px-4 py-2 text-left text-xs">Issue</th>
+                <th class="px-4 py-2 text-left text-xs">Due</th>
+                <th class="px-4 py-2 text-left text-xs">Status</th>
+                <th class="px-4 py-2 text-left text-xs">Fine</th>
+                <th class="px-4 py-2 text-left text-xs">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="recordsTable" class="divide-y divide-slate-100">
+              <!-- JS will inject rows -->
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Pagination -->
+        <div class="mt-4 flex items-center justify-between">
+          <div id="paginationInfo" class="text-sm text-slate-500">Showing 0 of 0</div>
+          <div class="flex items-center gap-2">
+            <button id="prevPage" class="px-3 py-1 rounded bg-slate-100">Prev</button>
+            <div id="pageNumbers" class="flex items-center gap-1"></div>
+            <button id="nextPage" class="px-3 py-1 rounded bg-slate-100">Next</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Borrow history (cards for mobile) -->
+      <div class="bg-white rounded-lg shadow p-4">
+        <h3 class="text-md font-semibold mb-3">Borrow History (recent)</h3>
+        <div id="historyList" class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <!-- JS populates -->
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- EDIT MODAL for borrow record (extend, edit borrower) -->
+  <div id="editModal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/40 p-4">
+    <div class="bg-white rounded-lg shadow p-6 w-full max-w-xl">
+      <h3 class="text-lg font-semibold mb-3">Edit Borrow Record</h3>
+      <form id="editForm" class="space-y-3">
+        <input type="hidden" id="editRecordId">
+        <div>
+          <label class="text-sm">Borrower Name</label>
+          <input id="editBorrowerName" type="text" class="mt-1 block w-full px-3 py-2 rounded border" />
+        </div>
+        <div>
+          <label class="text-sm">Borrower Email</label>
+          <input id="editBorrowerEmail" type="email" class="mt-1 block w-full px-3 py-2 rounded border" />
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="text-sm">Issue Date</label>
+            <input id="editIssueDate" type="date" class="mt-1 block w-full px-3 py-2 rounded border" />
+          </div>
+          <div>
+            <label class="text-sm">Due Date</label>
+            <input id="editDueDate" type="date" class="mt-1 block w-full px-3 py-2 rounded border" />
+          </div>
+        </div>
+        <div class="flex items-center gap-3">
+          <button id="saveEdit" type="submit" class="px-4 py-2 bg-indigo-600 text-white rounded">Save</button>
+          <button id="cancelEdit" type="button" class="px-4 py-2 bg-slate-100 rounded">Cancel</button>
+          <button id="deleteRecord" type="button" class="ml-auto px-3 py-1 bg-rose-50 text-rose-700 rounded">Delete</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- TOASTS & LOADING -->
+  <div id="toastContainer" class="fixed bottom-6 right-6 flex flex-col gap-2 z-50"></div>
+  <div id="loadingOverlay" class="fixed inset-0 z-40 hidden items-center justify-center bg-black/20">
+    <div class="bg-white rounded-lg p-6 flex items-center gap-4 shadow">
+      <div class="spinner" aria-hidden="true"></div>
+      <div>
+        <div class="font-medium">Working…</div>
+        <div class="text-xs text-slate-500">Processing</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- FIREBASE (compat) -->
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
+
+  <script>
+    /* =========================================================================
+       CONFIG: Replace with your Firebase Realtime Database config
+    ========================================================================= */
+    const firebaseConfig = {
+      apiKey: "AIzaSyBBxENou0wJoiIALCm27TvDQEKHiGdlVf4",
+      authDomain: "digital-library-3cb1c.firebaseapp.com",
+      databaseURL: "https://digital-library-3cb1c-default-rtdb.asia-southeast1.firebasedatabase.app",
+      projectId: "digital-library-3cb1c",
+      storageBucket: "digital-library-3cb1c.firebasestorage.app",
+      messagingSenderId: "3671589649",
+      appId: "1:3671589649:web:83e9e90236f6a88f07c2b0",
+    };
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+
+    /* =========================================================================
+       DOM references
+    ========================================================================= */
+    const bookSelect = document.getElementById('bookSelect');
+    const borrowerName = document.getElementById('borrowerName');
+    const borrowerEmail = document.getElementById('borrowerEmail');
+    const issueDateInput = document.getElementById('issueDate');
+    const durationInput = document.getElementById('durationDays');
+    const btnBorrow = document.getElementById('btnBorrow');
+    const btnQuickBorrow = document.getElementById('btnQuickBorrow');
+
+    const activeBorrowSelect = document.getElementById('activeBorrowSelect');
+    const btnReturn = document.getElementById('btnReturn');
+    const btnExtend = document.getElementById('btnExtend');
+    const btnForceReturn = document.getElementById('btnForceReturn');
+    const selectedBorrowInfo = document.getElementById('selectedBorrowInfo');
+
+    const notificationsEl = document.getElementById('notifications');
+    const finePerDayInput = document.getElementById('finePerDay');
+
+    const recordsTable = document.getElementById('recordsTable');
+    const historyList = document.getElementById('historyList');
+
+    const searchInput = document.getElementById('search');
+    const clearSearch = document.getElementById('clearSearch');
+    const filterStatus = document.getElementById('filterStatus');
+    const pageSizeSelect = document.getElementById('pageSize');
+    const pageNumbers = document.getElementById('pageNumbers');
+    const prevPageBtn = document.getElementById('prevPage');
+    const nextPageBtn = document.getElementById('nextPage');
+    const paginationInfo = document.getElementById('paginationInfo');
+    const statsEl = document.getElementById('stats');
+
+    const editModal = document.getElementById('editModal');
+    const editForm = document.getElementById('editForm');
+    const editRecordId = document.getElementById('editRecordId');
+    const editBorrowerName = document.getElementById('editBorrowerName');
+    const editBorrowerEmail = document.getElementById('editBorrowerEmail');
+    const editIssueDate = document.getElementById('editIssueDate');
+    const editDueDate = document.getElementById('editDueDate');
+    const saveEdit = document.getElementById('saveEdit');
+    const cancelEdit = document.getElementById('cancelEdit');
+    const deleteRecord = document.getElementById('deleteRecord');
+
+    const toastContainer = document.getElementById('toastContainer');
+    const loadingOverlay = document.getElementById('loadingOverlay');
+
+    /* =========================================================================
+       Realtime DB refs & local state
+    ========================================================================= */
+    const booksRef = db.ref('books');            // /books/{bookId}: { title, author, quantity, available }
+    const borrowsRef = db.ref('borrows');        // /borrows/{borrowId}: transaction records
+    // Example borrow record:
+    // { bookId, bookTitle, borrowerName, borrowerEmail, issueDate (ISO), dueDate (ISO), returnDate (ISO|null),
+    //   fine: number, status: 'borrowed'|'returned'|'lost', createdAt, updatedAt }
+
+    let booksCache = {};     // { bookId: book }
+    let borrowsCache = {};   // { borrowId: borrow }
+    let activeBorrows = [];  // array of borrow ids with status 'borrowed'
+    let currentPage = 1;
+    let pageSize = Number(pageSizeSelect.value) || 20;
+
+    /* =========================================================================
+       Utilities: toasts, loading, date helpers, fine calc
+    ========================================================================= */
+    function showLoading(on = true) { loadingOverlay.classList.toggle('hidden', !on); }
+    function showToast(msg, type='success', duration=3500) {
+      const el = document.createElement('div');
+      const base = 'toast-enter px-4 py-2 rounded shadow flex items-center gap-3 max-w-sm';
+      if (type === 'success') el.className = base + ' bg-emerald-50 text-emerald-800 border border-emerald-100';
+      else if (type === 'error') el.className = base + ' bg-rose-50 text-rose-800 border border-rose-100';
+      else el.className = base + ' bg-sky-50 text-sky-800 border border-sky-100';
+      el.innerHTML = `<div class="text-sm">${msg}</div>`;
+      toastContainer.appendChild(el);
+      requestAnimationFrame(() => el.classList.add('toast-show'));
+      setTimeout(()=>{ el.classList.remove('toast-show'); setTimeout(()=>el.remove(),300); }, duration);
+    }
+
+    function isoDate(d = new Date()) {
+      // YYYY-MM-DD formatted for input[type=date]
+      const yyyy = d.getFullYear();
+      const mm = String(d.getMonth()+1).padStart(2,'0');
+      const dd = String(d.getDate()).padStart(2,'0');
+      return `${yyyy}-${mm}-${dd}`;
+    }
+    function parseISODate(s) {
+      return s ? new Date(s) : null;
+    }
+    function addDays(date, days) {
+      const d = new Date(date);
+      d.setDate(d.getDate() + Number(days));
+      return d;
+    }
+    function dateToISODateTime(d = new Date()) { return new Date(d).toISOString(); }
+
+    function daysBetween(a, b) {
+      // difference in days (b - a)
+      const ms = b - a;
+      return Math.floor(ms / (1000 * 60 * 60 * 24));
+    }
+
+    function calculateFine(dueISO, returnISO) {
+      const perDay = Number(finePerDayInput.value) || 0;
+      const due = new Date(dueISO);
+      const ret = returnISO ? new Date(returnISO) : new Date();
+      const overdueDays = Math.max(0, daysBetween(due, ret));
+      return Number((overdueDays * perDay).toFixed(2));
+    }
+
+    /* =========================================================================
+       Realtime listeners for books & borrows
+    ========================================================================= */
+    booksRef.on('value', snap => {
+      booksCache = snap.val() || {};
+      populateBookSelect();
+      updateStats();
+    }, err => {
+      console.error(err); showToast('Failed to read books: ' + (err.message||''), 'error');
+    });
+
+    borrowsRef.on('value', snap => {
+      borrowsCache = snap.val() || {};
+      rebuildDerived(); // refresh UI
+    }, err => {
+      console.error(err); showToast('Failed to read borrow records: ' + (err.message||''), 'error');
+    });
+
+    /* =========================================================================
+       Populate book dropdown
+    ========================================================================= */
+    function populateBookSelect() {
+      const keys = Object.keys(booksCache || {});
+      bookSelect.innerHTML = '';
+      const placeholder = document.createElement('option');
+      placeholder.value = '';
+      placeholder.textContent = '— Select a book —';
+      bookSelect.appendChild(placeholder);
+
+      keys.forEach(id => {
+        const b = booksCache[id];
+        const opt = document.createElement('option');
+        opt.value = id;
+        opt.textContent = `${b.title} — (${b.author||'—'}) — Available: ${b.available ?? 0}`;
+        bookSelect.appendChild(opt);
+      });
+    }
+
+    /* =========================================================================
+       Borrow flow (create borrow record + decrement available using transaction)
+       - Uses a multi-path update with a transaction for book.available to avoid races.
+    ========================================================================= */
+    document.getElementById('borrowForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const bookId = bookSelect.value;
+      if (!bookId) { showToast('Choose a book', 'error'); return; }
+      const book = booksCache[bookId];
+      if (!book) { showToast('Book not found', 'error'); return; }
+      if (Number(book.available || 0) < 1) { showToast('Book not available', 'error'); return; }
+
+      const name = borrowerName.value.trim() || 'Guest';
+      const email = borrowerEmail.value.trim() || '';
+      const issueDateVal = issueDateInput.value ? new Date(issueDateInput.value) : new Date();
+      const duration = Number(durationInput.value) || 14;
+      const due = addDays(issueDateVal, duration);
+
+      // Build borrow record
+      const newBorrowRef = borrowsRef.push();
+      const borrowId = newBorrowRef.key;
+      const record = {
+        bookId,
+        bookTitle: book.title || '',
+        borrowerName: name,
+        borrowerEmail: email,
+        issueDate: issueDateVal.toISOString(),
+        dueDate: due.toISOString(),
+        returnDate: null,
+        fine: 0,
+        status: 'borrowed',
+        createdAt: Date.now(),
+        updatedAt: Date.now()
+      };
+
+      try {
+        showLoading(true);
+        // Use transaction to decrement available atomically
+        await booksRef.child(bookId).child('available').transaction(current => {
+          if ((current || 0) <= 0) return; // abort
+          return (current || 0) - 1;
+        }, async (err, committed, snap) => {
+          if (err) {
+            showToast('Failed to borrow due to book state', 'error');
+          } else if (!committed) {
+            showToast('Book is no longer available', 'error');
+          } else {
+            // transaction succeeded: write borrow record
+            await newBorrowRef.set(record);
+            showToast('Book borrowed successfully', 'success');
+            // reset form
+            borrowerName.value = '';
+            borrowerEmail.value = '';
+            issueDateInput.value = '';
+            durationInput.value = '14';
+          }
+        });
+      } catch (err) {
+        console.error(err);
+        showToast('Error during borrow: ' + (err.message||''), 'error');
+      } finally { showLoading(false); }
+    });
+
+    // Quick borrow (today)
+    btnQuickBorrow.addEventListener('click', () => {
+      issueDateInput.value = isoDate(new Date());
+      durationInput.value = 14;
+      borrowerName.value = borrowerName.value || 'Guest';
+      document.getElementById('borrowForm').dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
+    });
+
+    /* =========================================================================
+       Build active borrow list for return panel
+    ========================================================================= */
+    function buildActiveBorrowOptions() {
+      activeBorrowSelect.innerHTML = '';
+      const placeholder = document.createElement('option'); placeholder.value=''; placeholder.textContent='— Select active borrow —'; activeBorrowSelect.appendChild(placeholder);
+      const active = Object.entries(borrowsCache || {}).filter(([id, rec]) => rec && rec.status === 'borrowed')
+        .sort((a,b) => (a[1].dueDate || '') > (b[1].dueDate || '') ? 1 : -1);
+      active.forEach(([id, rec]) => {
+        const opt = document.createElement('option'); opt.value=id;
+        opt.textContent = `${rec.borrowerName} — ${rec.bookTitle} (due ${rec.dueDate ? (new Date(rec.dueDate)).toLocaleDateString() : '—'})`;
+        activeBorrowSelect.appendChild(opt);
+      });
+
+      // Update selectedBorrowInfo
+      const sel = activeBorrowSelect.value;
+      updateSelectedBorrowInfo(sel);
+    }
+
+    activeBorrowSelect.addEventListener('change', (e) => updateSelectedBorrowInfo(e.target.value));
+
+    function updateSelectedBorrowInfo(id) {
+      if (!id) { selectedBorrowInfo.textContent = ''; return; }
+      const rec = borrowsCache[id];
+      if (!rec) { selectedBorrowInfo.textContent = 'Record missing'; return; }
+      const due = rec.dueDate ? new Date(rec.dueDate).toLocaleDateString() : '—';
+      selectedBorrowInfo.innerHTML = `Borrowed: <strong>${rec.borrowerName}</strong> — ${rec.bookTitle} • Due: ${due}`;
+    }
+
+    /* =========================================================================
+       Return flow
+       - Calculate fine (based on days overdue and per-day rate)
+       - Update borrow record with returnDate, fine, status; increment book.available via transaction
+    ========================================================================= */
+    btnReturn.addEventListener('click', async () => {
+      const id = activeBorrowSelect.value;
+      if (!id) { showToast('Select an active borrow', 'error'); return; }
+      const rec = borrowsCache[id];
+      if (!rec) { showToast('Record not found', 'error'); return; }
+      const nowISO = new Date().toISOString();
+      const fine = calculateFine(rec.dueDate, nowISO);
+
+      try {
+        showLoading(true);
+        // increment available atomically
+        await booksRef.child(rec.bookId).child('available').transaction(current => {
+          return (current || 0) + 1;
+        }, async (err, committed, snap) => {
+          if (err || !committed) {
+            showToast('Failed to update book availability', 'error');
+          } else {
+            // update borrow record
+            await borrowsRef.child(id).update({
+              returnDate: nowISO,
+              fine,
+              status: 'returned',
+              updatedAt: Date.now()
+            });
+            showToast(`Book returned. Fine: ${fine.toFixed(2)}`, 'success');
+          }
+        });
+      } catch (err) {
+        console.error(err); showToast('Error on return: ' + (err.message||''), 'error');
+      } finally { showLoading(false); }
+    });
+
+    // Force return (admin override) - same as return but status forced
+    btnForceReturn.addEventListener('click', async () => {
+      if (!confirm('Force return selected borrow (admin)?')) return;
+      const id = activeBorrowSelect.value;
+      if (!id) { showToast('Select an active borrow', 'error'); return; }
+      const rec = borrowsCache[id];
+      if (!rec) { showToast('Record not found', 'error'); return; }
+      try {
+        showLoading(true);
+        // increment available
+        await booksRef.child(rec.bookId).child('available').transaction(curr => (curr || 0) + 1);
+        await borrowsRef.child(id).update({
+          returnDate: new Date().toISOString(),
+          fine: 0,
+          status: 'returned',
+          updatedAt: Date.now()
+        });
+        showToast('Force return applied', 'success');
+      } catch (err) {
+        console.error(err); showToast('Force return failed', 'error');
+      } finally { showLoading(false); }
+    });
+
+    // Extend due: add days
+    btnExtend.addEventListener('click', async () => {
+      const id = activeBorrowSelect.value;
+      if (!id) { showToast('Select an active borrow', 'error'); return; }
+      const addDaysValue = parseInt(prompt('Enter number of days to extend due date (positive integer):', '7'), 10);
+      if (!addDaysValue || isNaN(addDaysValue) || addDaysValue <= 0) { showToast('Invalid number of days', 'error'); return; }
+      const rec = borrowsCache[id];
+      if (!rec) { showToast('Record not found', 'error'); return; }
+      const due = rec.dueDate ? new Date(rec.dueDate) : new Date();
+      const newDue = addDays(due, addDaysValue);
+      try {
+        showLoading(true);
+        await borrowsRef.child(id).update({ dueDate: newDue.toISOString(), updatedAt: Date.now() });
+        showToast('Due date extended', 'success');
+      } catch (err) {
+        console.error(err); showToast('Failed to extend due date', 'error');
+      } finally { showLoading(false); }
+    });
+
+    /* =========================================================================
+       Fine calculation helper
+    ========================================================================= */
+    function calculateFine(dueISO, returnISO) {
+      const perDay = Number(finePerDayInput.value) || 0;
+      if (!dueISO) return 0;
+      const due = new Date(dueISO);
+      const ret = returnISO ? new Date(returnISO) : new Date();
+      const overdueDays = Math.max(0, Math.ceil((ret - due) / (1000*60*60*24)));
+      return Number((overdueDays * perDay).toFixed(2));
+    }
+
+    /* =========================================================================
+       Derived lists & renders: table, history, notifications, pagination
+    ========================================================================= */
+    function rebuildDerived() {
+      buildActiveBorrowOptions();
+      renderNotifications();
+      renderRecordsTable();
+      renderHistory();
+      updateStats();
+    }
+
+    function updateStats() {
+      const totalBooks = Object.keys(booksCache || {}).length;
+      const totalBorrows = Object.keys(borrowsCache || {}).length;
+      const active = Object.values(borrowsCache || {}).filter(r => r && r.status === 'borrowed').length;
+      const overdue = Object.values(borrowsCache || {}).filter(r => {
+        if (!r || r.status !== 'borrowed' || !r.dueDate) return false;
+        return new Date() > new Date(r.dueDate);
+      }).length;
+      statsEl.textContent = `${totalBooks} books • ${totalBorrows} transactions • Active: ${active} • Overdue: ${overdue}`;
+    }
+
+    // Notifications: overdue list
+    function renderNotifications() {
+      const overdueList = Object.entries(borrowsCache || {}).filter(([id, rec]) => {
+        if (!rec) return false;
+        if (rec.status !== 'borrowed') return false;
+        if (!rec.dueDate) return false;
+        return new Date() > new Date(rec.dueDate);
+      }).sort((a,b) => new Date(a[1].dueDate) - new Date(b[1].dueDate));
+
+      notificationsEl.innerHTML = '';
+      if (overdueList.length === 0) {
+        notificationsEl.textContent = 'No overdue books';
+        return;
+      }
+      overdueList.slice(0, 6).forEach(([id, rec]) => {
+        const el = document.createElement('div');
+        el.className = 'flex items-center justify-between gap-3 text-sm';
+        const d = new Date(rec.dueDate);
+        el.innerHTML = `<div><strong>${escapeHtml(rec.borrowerName)}</strong> — ${escapeHtml(rec.bookTitle)}</div><div class="text-xs overdue badge">Overdue ${daysBetween(d, new Date())}d</div>`;
+        notificationsEl.appendChild(el);
+      });
+    }
+
+    // Render records table with search/filter/pagination
+    let currentPage = 1;
+    function renderRecordsTable() {
+      const all = Object.entries(borrowsCache || {}).map(([id, rec]) => ({ id, ...rec }));
+      // sort by createdAt desc
+      all.sort((a,b) => (b.createdAt||0) - (a.createdAt||0));
+      // filter by search & status
+      const q = (searchInput.value || '').toLowerCase().trim();
+      const statusF = filterStatus.value;
+      let filtered = all.filter(r => {
+        if (statusF) {
+          if (statusF === 'overdue') {
+            if (r.status !== 'borrowed') return false;
+            if (!r.dueDate) return false;
+            if (new Date(r.dueDate) >= new Date()) return false; // not overdue
+          } else {
+            if (r.status !== statusF) return false;
+          }
+        }
+        if (!q) return true;
+        return (String(r.borrowerName||'') + ' ' + String(r.borrowerEmail||'') + ' ' + String(r.bookTitle||'')).toLowerCase().includes(q);
+      });
+
+      // pagination
+      pageSize = Number(pageSizeSelect.value) || 20;
+      const total = filtered.length;
+      const totalPages = Math.max(1, Math.ceil(total / pageSize));
+      if (currentPage > totalPages) currentPage = totalPages;
+      const start = (currentPage -1) * pageSize;
+      const end = Math.min(total, start + pageSize);
+      const pageItems = filtered.slice(start, end);
+
+      // populate table
+      recordsTable.innerHTML = '';
+      pageItems.forEach(rec => {
+        const tr = document.createElement('tr');
+        const dueDate = rec.dueDate ? new Date(rec.dueDate).toLocaleDateString() : '—';
+        let statusBadge = '';
+        if (rec.status === 'borrowed') {
+          if (rec.dueDate && new Date() > new Date(rec.dueDate)) statusBadge = `<span class="badge overdue">Overdue</span>`;
+          else statusBadge = `<span class="badge active-borrow">Borrowed</span>`;
+        } else if (rec.status === 'returned') statusBadge = `<span class="badge returned">Returned</span>`;
+        else statusBadge = `<span class="badge">${escapeHtml(rec.status)}</span>`;
+
+        const fine = rec.fine ? Number(rec.fine).toFixed(2) : '0.00';
+        tr.innerHTML = `
+          <td class="px-4 py-3 align-top"><div class="font-medium">${escapeHtml(rec.borrowerName)}</div><div class="text-xs text-slate-500">${escapeHtml(rec.borrowerEmail||'')}</div></td>
+          <td class="px-4 py-3 align-top">${escapeHtml(rec.bookTitle)}</td>
+          <td class="px-4 py-3 align-top">${rec.issueDate ? new Date(rec.issueDate).toLocaleDateString() : '—'}</td>
+          <td class="px-4 py-3 align-top">${dueDate}</td>
+          <td class="px-4 py-3 align-top">${statusBadge}</td>
+          <td class="px-4 py-3 align-top">${fine}</td>
+          <td class="px-4 py-3 align-top">
+            <div class="flex items-center gap-2">
+              <button data-id="${rec.id}" class="viewBtn px-2 py-1 rounded bg-slate-100 text-sm">View</button>
+              <button data-id="${rec.id}" class="editBtn px-2 py-1 rounded bg-indigo-600 text-white text-sm">Edit</button>
+              <button data-id="${rec.id}" class="delBtn px-2 py-1 rounded bg-rose-50 text-rose-600 text-sm">Delete</button>
+            </div>
+          </td>
+        `;
+        // attach handlers
+        tr.querySelector('.viewBtn').addEventListener('click', () => alert(formatDetailed(rec)));
+        tr.querySelector('.editBtn').addEventListener('click', () => openEditModal(rec));
+        tr.querySelector('.delBtn').addEventListener('click', () => deleteBorrowRec(rec.id));
+        recordsTable.appendChild(tr);
+      });
+
+      // pagination controls
+      paginationInfo.textContent = `Showing ${start+1}-${end} of ${total}`;
+      renderPageButtons(totalPages);
+    }
+
+    function renderPageButtons(totalPages) {
+      pageNumbers.innerHTML = '';
+      const max = 7;
+      let start = Math.max(1, currentPage - Math.floor(max/2));
+      let end = Math.min(totalPages, start + max -1);
+      if (end - start < max -1) start = Math.max(1, end - max +1);
+      for (let i=start;i<=end;i++) {
+        const btn = document.createElement('button');
+        btn.className = `px-3 py-1 rounded ${i===currentPage ? 'bg-indigo-600 text-white' : 'bg-slate-100'}`;
+        btn.textContent = i;
+        btn.addEventListener('click', () => { currentPage = i; renderRecordsTable(); });
+        pageNumbers.appendChild(btn);
+      }
+    }
+
+    prevPageBtn.addEventListener('click', () => { if (currentPage>1) { currentPage--; renderRecordsTable(); } });
+    nextPageBtn.addEventListener('click', () => {
+      const total = Object.values(borrowsCache || {}).length;
+      const totalPages = Math.max(1, Math.ceil(total / pageSize));
+      if (currentPage < totalPages) { currentPage++; renderRecordsTable(); }
+    });
+
+    // Borrow history recent cards
+    function renderHistory(limit = 8) {
+      const all = Object.entries(borrowsCache || {}).map(([id, rec]) => ({ id, ...rec }))
+        .sort((a,b) => (b.createdAt||0) - (a.createdAt||0))
+        .slice(0, limit);
+      historyList.innerHTML = '';
+      all.forEach(rec => {
+        const div = document.createElement('div');
+        div.className = 'p-3 rounded bg-slate-50';
+        const due = rec.dueDate ? new Date(rec.dueDate).toLocaleDateString() : '—';
+        div.innerHTML = `<div class="font-medium">${escapeHtml(rec.borrowerName)}</div><div class="text-xs text-slate-500">${escapeHtml(rec.bookTitle)}</div><div class="text-xs mt-2">Due: ${due}</div>`;
+        historyList.appendChild(div);
+      });
+    }
+
+    function formatDetailed(rec) {
+      return `Borrow Record:
+Borrower: ${rec.borrowerName} ${rec.borrowerEmail ? '(' + rec.borrowerEmail + ')' : ''}
+Book: ${rec.bookTitle}
+Issue: ${rec.issueDate ? new Date(rec.issueDate).toLocaleString() : '—'}
+Due: ${rec.dueDate ? new Date(rec.dueDate).toLocaleString() : '—'}
+Return: ${rec.returnDate ? new Date(rec.returnDate).toLocaleString() : '—'}
+Status: ${rec.status}
+Fine: ${rec.fine || 0}`;
+    }
+
+    /* =========================================================================
+       CRUD operations on borrow records (edit / delete)
+    ========================================================================= */
+    function openEditModal(rec) {
+      editRecordId.value = rec.id;
+      editBorrowerName.value = rec.borrowerName || '';
+      editBorrowerEmail.value = rec.borrowerEmail || '';
+      editIssueDate.value = rec.issueDate ? isoDate(new Date(rec.issueDate)) : '';
+      editDueDate.value = rec.dueDate ? isoDate(new Date(rec.dueDate)) : '';
+      editModal.classList.remove('hidden');
+    }
+
+    cancelEdit.addEventListener('click', () => editModal.classList.add('hidden'));
+
+    editForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const id = editRecordId.value;
+      if (!id) return;
+      const updates = {
+        borrowerName: editBorrowerName.value.trim() || 'Guest',
+        borrowerEmail: editBorrowerEmail.value.trim() || '',
+        issueDate: editIssueDate.value ? new Date(editIssueDate.value).toISOString() : null,
+        dueDate: editDueDate.value ? new Date(editDueDate.value).toISOString() : null,
+        updatedAt: Date.now()
+      };
+      try {
+        showLoading(true);
+        await borrowsRef.child(id).update(updates);
+        showToast('Record updated', 'success');
+        editModal.classList.add('hidden');
+      } catch (err) {
+        console.error(err); showToast('Failed to save', 'error');
+      } finally { showLoading(false); }
+    });
+
+    // Delete borrow record (admin)
+    deleteRecord.addEventListener('click', async () => {
+      const id = editRecordId.value;
+      if (!id) return;
+      if (!confirm('Delete this borrow record? This will not change book availability.')) return;
+      try {
+        showLoading(true);
+        await borrowsRef.child(id).remove();
+        showToast('Record deleted', 'info');
+        editModal.classList.add('hidden');
+      } catch (err) { console.error(err); showToast('Delete failed', 'error'); }
+      finally { showLoading(false); }
+    });
+
+    async function deleteBorrowRec(id) {
+      if (!confirm('Delete this borrow record? (Admin)')) return;
+      try {
+        showLoading(true);
+        await borrowsRef.child(id).remove();
+        showToast('Deleted', 'info');
+      } catch (err) { console.error(err); showToast('Delete failed', 'error'); }
+      finally { showLoading(false); }
+    }
+
+    /* =========================================================================
+       Misc: search, filters
+    ========================================================================= */
+    searchInput.addEventListener('input', () => {
+      clearSearch.classList.toggle('hidden', !searchInput.value);
+      currentPage = 1;
+      renderRecordsTable();
+    });
+    clearSearch.addEventListener('click', () => { searchInput.value=''; clearSearch.classList.add('hidden'); renderRecordsTable(); });
+    filterStatus.addEventListener('change', () => { currentPage = 1; renderRecordsTable(); });
+    pageSizeSelect.addEventListener('change', () => { pageSize = Number(pageSizeSelect.value); currentPage = 1; renderRecordsTable(); });
+
+    /* =========================================================================
+       Helper utilities
+    ========================================================================= */
+    function escapeHtml(s='') {
+      return String(s).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'", '&#039;');
+    }
+
+    function isoDate(d = new Date()) {
+      const yyyy = d.getFullYear();
+      const mm = String(d.getMonth()+1).padStart(2,'0');
+      const dd = String(d.getDate()).padStart(2,'0');
+      return `${yyyy}-${mm}-${dd}`;
+    }
+    function daysBetween(a, b) { return Math.floor((b - a)/(1000*60*60*24)); }
+
+    /* =========================================================================
+       Initial UI setup
+    ========================================================================= */
+    issueDateInput.value = isoDate(new Date());
+    buildActiveBorrowOptions();
+    rebuildDerived();
+
+    console.info('Borrow & Return Module loaded. Replace firebaseConfig and secure database rules for production.');
+  </script>
+</body>
+</html>

@@ -1,0 +1,859 @@
+<!doctype html>
+<html lang="en" class="h-full">
+<head>
+  <!--
+    LibraSuite — Admin Dashboard (single-file)
+    Tech: HTML5 + Tailwind CSS (CDN) + Chart.js + Firebase Realtime Database (compat)
+    Replace firebaseConfig with your project's values before use.
+  -->
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>LibraSuite Admin Dashboard</title>
+
+  <!-- Google font -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+
+  <!-- Tailwind CDN and config for dark mode -->
+  <script>
+    window.tailwind = { config: { darkMode: 'class', theme: { extend: { colors: { primary: '#2563eb' } } } } }
+  </script>
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- Chart.js CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <style>
+    :root { --glass: rgba(255,255,255,0.6); --glass-dark: rgba(15,23,42,0.6); }
+    html,body,#app { height:100%; }
+    body { font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial; }
+    .toast-enter { transform: translateY(10px); opacity:0; }
+    .toast-show  { transform: translateY(0); opacity:1; transition: all .28s cubic-bezier(.2,.9,.3,1); }
+    .spinner { border: 4px solid rgba(0,0,0,0.08); border-top-color: rgba(37,99,235,1); border-radius: 9999px; width: 36px; height: 36px; animation: spin .9s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .sidebar-collapsed { width: 64px; }
+    .card-hover:hover { transform: translateY(-4px); transition: transform .18s ease; }
+  </style>
+</head>
+<body class="bg-gray-50 text-slate-800">
+
+<div id="app" class="min-h-screen flex">
+
+  <!-- =========================
+       SIDEBAR NAVIGATION
+       ========================= -->
+  <aside id="sidebar" class="w-64 bg-white dark:bg-slate-900 border-r dark:border-slate-800 hidden lg:block">
+    <div class="h-full flex flex-col">
+      <div class="px-4 py-6 flex items-center gap-3 border-b dark:border-slate-800">
+        <svg class="w-8 h-8 text-indigo-600" viewBox="0 0 24 24" fill="none"><path d="M3 5.5C3 4.119 4.12 3 5.5 3h11C18.88 3 20 4.119 20 5.5V19c0 .553-.447 1-1 1H5.5C4.12 20 3 18.881 3 17.5V5.5Z" stroke="currentColor" stroke-width="1.2"/></svg>
+        <div>
+          <div class="font-semibold">LibraSuite</div>
+          <div class="text-xs text-slate-400">Admin Dashboard</div>
+        </div>
+      </div>
+
+      <nav class="p-4 flex-1 overflow-y-auto">
+        <ul class="space-y-1">
+          <li><a href="#dashboard" class="flex items-center gap-3 px-3 py-2 rounded hover:bg-slate-50 dark:hover:bg-slate-800"><svg class="w-5 h-5 text-slate-500" viewBox="0 0 24 24" fill="none"><path d="M3 13h8V3H3v10zm0 8h8v-6H3v6zM13 21h8V11h-8v10zM13 3v6h8V3h-8z" stroke="currentColor" stroke-width="1.2"/></svg><span>Dashboard</span></a></li>
+          <li><a href="#books" class="flex items-center gap-3 px-3 py-2 rounded hover:bg-slate-50 dark:hover:bg-slate-800"><svg class="w-5 h-5 text-slate-500" viewBox="0 0 24 24" fill="none"><path d="M3 5.5C3 4.119 4.12 3 5.5 3h11" stroke="currentColor" stroke-width="1.2"/></svg><span>Books</span></a></li>
+          <li><a href="#users" class="flex items-center gap-3 px-3 py-2 rounded hover:bg-slate-50 dark:hover:bg-slate-800"><svg class="w-5 h-5 text-slate-500" viewBox="0 0 24 24" fill="none"><path d="M12 12a5 5 0 100-10 5 5 0 000 10zM2 22c0-5.5 4-8 10-8s10 2.5 10 8" stroke="currentColor" stroke-width="1.2"/></svg><span>Users</span></a></li>
+          <li><a href="#borrows" class="flex items-center gap-3 px-3 py-2 rounded hover:bg-slate-50 dark:hover:bg-slate-800"><svg class="w-5 h-5 text-slate-500" viewBox="0 0 24 24" fill="none"><path d="M7 7h10v10H7z" stroke="currentColor" stroke-width="1.2"/></svg><span>Borrows</span></a></li>
+          <li><a href="#reports" class="flex items-center gap-3 px-3 py-2 rounded hover:bg-slate-50 dark:hover:bg-slate-800"><svg class="w-5 h-5 text-slate-500" viewBox="0 0 24 24" fill="none"><path d="M3 3h18v4H3zM3 10h18v11H3z" stroke="currentColor" stroke-width="1.2"/></svg><span>Reports</span></a></li>
+        </ul>
+      </nav>
+
+      <div class="p-4 border-t dark:border-slate-800">
+        <div class="flex items-center justify-between">
+          <button id="toggleDark" class="px-3 py-2 rounded bg-slate-100 dark:bg-slate-800 text-sm">Toggle Dark</button>
+          <button id="signOutBtn" class="px-3 py-2 rounded bg-rose-50 text-rose-600 text-sm">Sign out</button>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- =========================
+       MAIN CONTENT
+       ========================= -->
+  <div class="flex-1 min-h-screen flex flex-col">
+    <!-- Topbar for mobile -->
+    <div class="bg-white dark:bg-slate-900 border-b dark:border-slate-800 lg:hidden">
+      <div class="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
+        <div class="flex items-center gap-3">
+          <button id="mobileMenuBtn" class="p-2 rounded-md bg-slate-100 dark:bg-slate-800"><svg class="w-5 h-5" viewBox="0 0 24 24" fill="none"><path d="M4 6h16M4 12h16M4 18h16" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></button>
+          <div class="font-semibold">Admin Dashboard</div>
+        </div>
+        <div class="flex items-center gap-3">
+          <div id="topStats" class="text-sm text-slate-500 hidden sm:block"></div>
+          <button id="toggleDarkMobile" class="p-2 rounded-md bg-slate-100 dark:bg-slate-800"><svg class="w-5 h-5" viewBox="0 0 24 24" fill="none"><path d="M12 3v2M12 19v2M4.2 4.2l1.4 1.4M18.4 18.4l1.4 1.4" stroke="currentColor"/></svg></button>
+        </div>
+      </div>
+      <div id="mobileMenu" class="hidden bg-white dark:bg-slate-900 border-t dark:border-slate-800 px-4 py-2"></div>
+    </div>
+
+    <!-- Page container -->
+    <main class="p-6 bg-gray-50 dark:bg-slate-900 flex-1 overflow-y-auto">
+      <div class="max-w-7xl mx-auto space-y-6">
+
+        <!-- =========================
+             DASHBOARD CARDS
+             ========================= -->
+        <section id="dashboard" class="grid grid-cols-1 lg:grid-cols-4 gap-6">
+          <!-- Card: Total Books -->
+          <div class="bg-white dark:bg-slate-800 rounded-lg p-5 shadow flex items-center justify-between card-hover">
+            <div>
+              <div class="text-sm text-slate-500 dark:text-slate-300">Total Books</div>
+              <div id="totalBooks" class="text-2xl font-bold mt-1">0</div>
+            </div>
+            <div class="text-indigo-600">
+              <svg class="w-10 h-10" viewBox="0 0 24 24" fill="none"><path d="M4 19.5V6a1 1 0 011-1h12" stroke="currentColor" stroke-width="1.6"/></svg>
+            </div>
+          </div>
+
+          <!-- Card: Total Users -->
+          <div class="bg-white dark:bg-slate-800 rounded-lg p-5 shadow flex items-center justify-between card-hover">
+            <div>
+              <div class="text-sm text-slate-500 dark:text-slate-300">Total Users</div>
+              <div id="totalUsers" class="text-2xl font-bold mt-1">0</div>
+            </div>
+            <div class="text-emerald-600">
+              <svg class="w-10 h-10" viewBox="0 0 24 24" fill="none"><path d="M12 12a5 5 0 100-10 5 5 0 000 10zM3 22c0-5.5 4-8 10-8s10 2.5 10 8" stroke="currentColor" stroke-width="1.6"/></svg>
+            </div>
+          </div>
+
+          <!-- Card: Borrowed Books -->
+          <div class="bg-white dark:bg-slate-800 rounded-lg p-5 shadow flex items-center justify-between card-hover">
+            <div>
+              <div class="text-sm text-slate-500 dark:text-slate-300">Borrowed Books</div>
+              <div id="borrowedBooks" class="text-2xl font-bold mt-1">0</div>
+            </div>
+            <div class="text-amber-600">
+              <svg class="w-10 h-10" viewBox="0 0 24 24" fill="none"><path d="M5 12h14M5 6h14M5 18h14" stroke="currentColor" stroke-width="1.6"/></svg>
+            </div>
+          </div>
+
+          <!-- Card: Returned Books -->
+          <div class="bg-white dark:bg-slate-800 rounded-lg p-5 shadow flex items-center justify-between card-hover">
+            <div>
+              <div class="text-sm text-slate-500 dark:text-slate-300">Returned Books</div>
+              <div id="returnedBooks" class="text-2xl font-bold mt-1">0</div>
+            </div>
+            <div class="text-sky-600">
+              <svg class="w-10 h-10" viewBox="0 0 24 24" fill="none"><path d="M20 12H4" stroke="currentColor" stroke-width="1.6"/></svg>
+            </div>
+          </div>
+        </section>
+
+        <!-- Fine collected + charts row -->
+        <section class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <!-- Fine collected -->
+          <div class="bg-white dark:bg-slate-800 rounded-lg p-5 shadow">
+            <div class="flex items-center justify-between">
+              <div>
+                <div class="text-sm text-slate-500 dark:text-slate-300">Fine Collected</div>
+                <div id="fineCollected" class="text-2xl font-bold mt-1">$0.00</div>
+              </div>
+              <div class="text-rose-600">
+                <svg class="w-8 h-8" viewBox="0 0 24 24" fill="none"><path d="M12 8v8M8 12h8" stroke="currentColor" stroke-width="1.6"/></svg>
+              </div>
+            </div>
+            <div class="mt-4 text-sm text-slate-500">Total fines collected from borrow returns.</div>
+          </div>
+
+          <!-- Chart: Books by Category -->
+          <div class="bg-white dark:bg-slate-800 rounded-lg p-5 shadow">
+            <div class="flex items-center justify-between">
+              <h4 class="font-semibold">Books by Category</h4>
+              <div class="text-xs text-slate-400">Realtime</div>
+            </div>
+            <canvas id="categoryChart" class="mt-3" height="160"></canvas>
+          </div>
+
+          <!-- Chart: Borrows over time -->
+          <div class="bg-white dark:bg-slate-800 rounded-lg p-5 shadow">
+            <div class="flex items-center justify-between">
+              <h4 class="font-semibold">Borrows (last 30 days)</h4>
+              <div class="text-xs text-slate-400">Trend</div>
+            </div>
+            <canvas id="borrowsChart" class="mt-3" height="160"></canvas>
+          </div>
+        </section>
+
+        <!-- Availability pie + CRUD buttons row -->
+        <section class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div class="bg-white dark:bg-slate-800 rounded-lg p-5 shadow">
+            <h4 class="font-semibold">Availability</h4>
+            <canvas id="availabilityChart" class="mt-3" height="160"></canvas>
+            <div class="mt-3 text-sm text-slate-500">Available vs Unavailable books</div>
+          </div>
+
+          <div class="lg:col-span-2 bg-white dark:bg-slate-800 rounded-lg p-5 shadow">
+            <div class="flex items-center justify-between">
+              <h4 class="font-semibold">Management</h4>
+              <div class="flex items-center gap-2">
+                <button id="btnCreateBook" class="px-3 py-2 bg-indigo-600 text-white rounded">Create Book</button>
+                <button id="btnCreateUser" class="px-3 py-2 bg-emerald-600 text-white rounded">Create User</button>
+              </div>
+            </div>
+
+            <!-- Recent activities -->
+            <div class="mt-4">
+              <h5 class="font-medium text-sm">Recent Activities</h5>
+              <ul id="recentActivities" class="mt-2 divide-y divide-slate-100 dark:divide-slate-800">
+                <!-- JS injects -->
+              </ul>
+              <div class="mt-3 text-xs text-slate-400">Shows recent borrows/returns/CRUD actions</div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Responsive tables for Books, Users, Borrows with CRUD buttons -->
+        <section id="books" class="space-y-6">
+          <div class="flex items-center justify-between">
+            <h3 class="text-lg font-semibold">Books</h3>
+            <div class="text-sm text-slate-500">Real-time list</div>
+          </div>
+
+          <div class="bg-white dark:bg-slate-800 rounded-lg p-4 shadow overflow-auto">
+            <table class="min-w-full divide-y divide-slate-100">
+              <thead class="bg-slate-50 dark:bg-slate-900">
+                <tr>
+                  <th class="px-3 py-2 text-left text-xs">Title</th>
+                  <th class="px-3 py-2 text-left text-xs">Author</th>
+                  <th class="px-3 py-2 text-left text-xs">Category</th>
+                  <th class="px-3 py-2 text-left text-xs">Available</th>
+                  <th class="px-3 py-2 text-left text-xs">Actions</th>
+                </tr>
+              </thead>
+              <tbody id="booksTable" class="divide-y divide-slate-100">
+                <!-- JS injects -->
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section id="users" class="space-y-6">
+          <div class="flex items-center justify-between">
+            <h3 class="text-lg font-semibold">Users</h3>
+            <div class="text-sm text-slate-500">Real-time list</div>
+          </div>
+
+          <div class="bg-white dark:bg-slate-800 rounded-lg p-4 shadow overflow-auto">
+            <table class="min-w-full divide-y divide-slate-100">
+              <thead class="bg-slate-50 dark:bg-slate-900">
+                <tr>
+                  <th class="px-3 py-2 text-left text-xs">Name</th>
+                  <th class="px-3 py-2 text-left text-xs">Email</th>
+                  <th class="px-3 py-2 text-left text-xs">Role</th>
+                  <th class="px-3 py-2 text-left text-xs">Actions</th>
+                </tr>
+              </thead>
+              <tbody id="usersTable" class="divide-y divide-slate-100">
+                <!-- JS injects -->
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section id="borrows" class="space-y-6">
+          <div class="flex items-center justify-between">
+            <h3 class="text-lg font-semibold">Borrows</h3>
+            <div class="text-sm text-slate-500">Transactions</div>
+          </div>
+
+          <div class="bg-white dark:bg-slate-800 rounded-lg p-4 shadow overflow-auto">
+            <table class="min-w-full divide-y divide-slate-100">
+              <thead class="bg-slate-50 dark:bg-slate-900">
+                <tr>
+                  <th class="px-3 py-2 text-left text-xs">Borrower</th>
+                  <th class="px-3 py-2 text-left text-xs">Book</th>
+                  <th class="px-3 py-2 text-left text-xs">Issue</th>
+                  <th class="px-3 py-2 text-left text-xs">Due</th>
+                  <th class="px-3 py-2 text-left text-xs">Status</th>
+                  <th class="px-3 py-2 text-left text-xs">Fine</th>
+                </tr>
+              </thead>
+              <tbody id="borrowsTable" class="divide-y divide-slate-100">
+                <!-- JS injects -->
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <!-- Footer -->
+        <footer class="text-xs text-slate-400 text-center pt-8 pb-4">© <span id="year"></span> LibraSuite — Admin Dashboard</footer>
+      </div>
+    </main>
+  </div>
+</div>
+
+<!-- Create/Edit Book Modal -->
+<div id="bookModal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/40 p-4">
+  <div class="bg-white dark:bg-slate-800 rounded-lg shadow p-6 w-full max-w-xl">
+    <h3 id="bookModalTitle" class="text-lg font-semibold mb-3">Create Book</h3>
+    <form id="bookForm" class="space-y-3">
+      <input type="hidden" id="bookIdInput" />
+      <div>
+        <label class="text-sm">Title</label>
+        <input id="bookTitle" class="mt-1 block w-full px-3 py-2 rounded border" required />
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="text-sm">Author</label>
+          <input id="bookAuthor" class="mt-1 block w-full px-3 py-2 rounded border" />
+        </div>
+        <div>
+          <label class="text-sm">Category</label>
+          <input id="bookCategory" class="mt-1 block w-full px-3 py-2 rounded border" />
+        </div>
+      </div>
+      <div class="grid grid-cols-3 gap-3">
+        <div>
+          <label class="text-sm">Quantity</label>
+          <input id="bookQuantity" type="number" min="0" value="1" class="mt-1 block w-full px-3 py-2 rounded border" />
+        </div>
+        <div>
+          <label class="text-sm">Available</label>
+          <input id="bookAvailable" type="number" min="0" value="1" class="mt-1 block w-full px-3 py-2 rounded border" />
+        </div>
+        <div>
+          <label class="text-sm">Publisher</label>
+          <input id="bookPublisher" class="mt-1 block w-full px-3 py-2 rounded border" />
+        </div>
+      </div>
+      <div class="flex items-center justify-end gap-2">
+        <button type="button" id="cancelBookBtn" class="px-3 py-2 bg-slate-100 rounded">Cancel</button>
+        <button id="saveBookBtn" class="px-4 py-2 bg-indigo-600 text-white rounded">Save</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Create/Edit User Modal -->
+<div id="userModal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/40 p-4">
+  <div class="bg-white dark:bg-slate-800 rounded-lg shadow p-6 w-full max-w-md">
+    <h3 id="userModalTitle" class="text-lg font-semibold mb-3">Create User</h3>
+    <form id="userForm" class="space-y-3">
+      <input type="hidden" id="userIdInput" />
+      <div>
+        <label class="text-sm">Name</label>
+        <input id="userName" class="mt-1 block w-full px-3 py-2 rounded border" required />
+      </div>
+      <div>
+        <label class="text-sm">Email</label>
+        <input id="userEmail" type="email" class="mt-1 block w-full px-3 py-2 rounded border" required />
+      </div>
+      <div>
+        <label class="text-sm">Role</label>
+        <select id="userRole" class="mt-1 block w-full px-3 py-2 rounded border">
+          <option value="user">user</option>
+          <option value="admin">admin</option>
+        </select>
+      </div>
+      <div class="flex items-center justify-end gap-2">
+        <button type="button" id="cancelUserBtn" class="px-3 py-2 bg-slate-100 rounded">Cancel</button>
+        <button id="saveUserBtn" class="px-4 py-2 bg-emerald-600 text-white rounded">Save</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Toast container and loading -->
+<div id="toastContainer" class="fixed bottom-6 right-6 flex flex-col gap-2 z-50"></div>
+<div id="globalLoading" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/20">
+  <div class="bg-white dark:bg-slate-800 rounded-lg p-6 flex items-center gap-4 shadow">
+    <div class="spinner" aria-hidden="true"></div>
+    <div>
+      <div class="font-medium">Working…</div>
+      <div class="text-sm text-slate-500">Please wait</div>
+    </div>
+  </div>
+</div>
+
+<!-- Firebase compat SDKs -->
+<script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
+
+<script>
+/* =========================================================================
+   CONFIG: Replace firebaseConfig with your Firebase project's credentials.
+   The dashboard expects Realtime DB nodes:
+   - /books
+   - /users
+   - /borrows
+   Each node stores objects keyed by id. This is a demo; secure with rules.
+   ========================================================================= */
+const firebaseConfig = {
+  apiKey: "AIzaSyBBxENou0wJoiIALCm27TvDQEKHiGdlVf4",
+      authDomain: "digital-library-3cb1c.firebaseapp.com",
+      databaseURL: "https://digital-library-3cb1c-default-rtdb.asia-southeast1.firebasedatabase.app",
+      projectId: "digital-library-3cb1c",
+      storageBucket: "digital-library-3cb1c.firebasestorage.app",
+      messagingSenderId: "3671589649",
+      appId: "1:3671589649:web:83e9e90236f6a88f07c2b0",
+};
+
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+
+/* =========================================================================
+   UI references
+   ========================================================================= */
+const toastContainer = document.getElementById('toastContainer');
+const globalLoading = document.getElementById('globalLoading');
+const yearEl = document.getElementById('year'); yearEl.textContent = new Date().getFullYear();
+
+const totalBooksEl = document.getElementById('totalBooks');
+const totalUsersEl = document.getElementById('totalUsers');
+const borrowedBooksEl = document.getElementById('borrowedBooks');
+const returnedBooksEl = document.getElementById('returnedBooks');
+const fineCollectedEl = document.getElementById('fineCollected');
+const recentActivitiesEl = document.getElementById('recentActivities');
+
+const booksTable = document.getElementById('booksTable');
+const usersTable = document.getElementById('usersTable');
+const borrowsTable = document.getElementById('borrowsTable');
+
+const btnCreateBook = document.getElementById('btnCreateBook');
+const bookModal = document.getElementById('bookModal');
+const bookModalTitle = document.getElementById('bookModalTitle');
+const bookForm = document.getElementById('bookForm');
+const bookIdInput = document.getElementById('bookIdInput');
+const bookTitle = document.getElementById('bookTitle');
+const bookAuthor = document.getElementById('bookAuthor');
+const bookCategory = document.getElementById('bookCategory');
+const bookQuantity = document.getElementById('bookQuantity');
+const bookAvailable = document.getElementById('bookAvailable');
+const bookPublisher = document.getElementById('bookPublisher');
+const cancelBookBtn = document.getElementById('cancelBookBtn');
+
+const btnCreateUser = document.getElementById('btnCreateUser');
+const userModal = document.getElementById('userModal');
+const userModalTitle = document.getElementById('userModalTitle');
+const userForm = document.getElementById('userForm');
+const userIdInput = document.getElementById('userIdInput');
+const userName = document.getElementById('userName');
+const userEmail = document.getElementById('userEmail');
+const userRole = document.getElementById('userRole');
+const cancelUserBtn = document.getElementById('cancelUserBtn');
+
+const recentActivities = []; // local array of activity entries
+
+const categoryChartCtx = document.getElementById('categoryChart').getContext('2d');
+const borrowsChartCtx = document.getElementById('borrowsChart').getContext('2d');
+const availabilityChartCtx = document.getElementById('availabilityChart').getContext('2d');
+
+let categoryChart, borrowsChart, availabilityChart;
+
+/* =========================================================================
+   Toast & loading helpers
+   ========================================================================= */
+function showToast(msg, type='success', dur=3500) {
+  const el = document.createElement('div');
+  el.className = 'toast-enter px-4 py-2 rounded shadow flex items-center gap-3 max-w-sm ' +
+    (type==='success' ? 'bg-emerald-50 text-emerald-800 border border-emerald-100' : type==='error' ? 'bg-rose-50 text-rose-800 border border-rose-100' : 'bg-sky-50 text-sky-800 border border-sky-100');
+  el.innerHTML = `<div class="text-sm">${msg}</div>`;
+  toastContainer.appendChild(el);
+  requestAnimationFrame(()=>el.classList.add('toast-show'));
+  setTimeout(()=>{ el.classList.remove('toast-show'); setTimeout(()=>el.remove(),300); }, dur);
+}
+function showLoading(on=true){ globalLoading.classList.toggle('hidden', !on); }
+
+/* =========================================================================
+   Realtime DB refs and caches
+   ========================================================================= */
+const booksRef = db.ref('books');
+const usersRef = db.ref('users');
+const borrowsRef = db.ref('borrows');
+
+let booksCache = {};
+let usersCache = {};
+let borrowsCache = {};
+
+/* =========================================================================
+   Real-time listeners: update caches and UI
+   ========================================================================= */
+booksRef.on('value', snap => {
+  booksCache = snap.val() || {};
+  renderBooksTable();
+  updateCardsAndCharts();
+}, err => { console.error('booksRef', err); showToast('Failed to read books: '+err.message,'error'); });
+
+usersRef.on('value', snap => {
+  usersCache = snap.val() || {};
+  renderUsersTable();
+  updateCardsAndCharts();
+}, err => { console.error('usersRef', err); showToast('Failed to read users: '+err.message,'error'); });
+
+borrowsRef.on('value', snap => {
+  borrowsCache = snap.val() || {};
+  renderBorrowsTable();
+  updateCardsAndCharts();
+  pushRecentActivitiesFromBorrows();
+}, err => { console.error('borrowsRef', err); showToast('Failed to read borrows: '+err.message,'error'); });
+
+/* =========================================================================
+   Render functions for tables
+   ========================================================================= */
+function renderBooksTable() {
+  booksTable.innerHTML = '';
+  Object.entries(booksCache).sort((a,b)=> (b[1].createdAt||0)-(a[1].createdAt||0)).forEach(([id, b]) => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td class="px-3 py-2 align-top"><div class="font-medium">${escape(b.title)}</div><div class="text-xs text-slate-400">${escape(b.publisher||'')}</div></td>
+      <td class="px-3 py-2 align-top">${escape(b.author||'')}</td>
+      <td class="px-3 py-2 align-top">${escape(b.category||'')}</td>
+      <td class="px-3 py-2 align-top">${Number(b.available||0)} / ${Number(b.quantity||0)}</td>
+      <td class="px-3 py-2 align-top">
+        <div class="flex items-center gap-2">
+          <button data-id="${id}" class="edit-book px-2 py-1 bg-indigo-600 text-white rounded text-sm">Edit</button>
+          <button data-id="${id}" class="delete-book px-2 py-1 bg-rose-50 text-rose-600 rounded text-sm">Delete</button>
+        </div>
+      </td>
+    `;
+    booksTable.appendChild(tr);
+  });
+
+  // attach event delegates for edit/delete
+  document.querySelectorAll('.edit-book').forEach(btn => btn.onclick = (e)=> openEditBook(e.currentTarget.dataset.id));
+  document.querySelectorAll('.delete-book').forEach(btn => btn.onclick = (e)=> deleteBook(e.currentTarget.dataset.id));
+}
+
+function renderUsersTable() {
+  usersTable.innerHTML = '';
+  Object.entries(usersCache).sort((a,b)=> (b[1].createdAt||0)-(a[1].createdAt||0)).forEach(([id, u]) => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td class="px-3 py-2 align-top">${escape(u.name||'')}</td>
+      <td class="px-3 py-2 align-top">${escape(u.email||'')}</td>
+      <td class="px-3 py-2 align-top">${escape(u.role||'user')}</td>
+      <td class="px-3 py-2 align-top">
+        <div class="flex items-center gap-2">
+          <button data-id="${id}" class="edit-user px-2 py-1 bg-emerald-600 text-white rounded text-sm">Edit</button>
+          <button data-id="${id}" class="delete-user px-2 py-1 bg-rose-50 text-rose-600 rounded text-sm">Delete</button>
+        </div>
+      </td>
+    `;
+    usersTable.appendChild(tr);
+  });
+  document.querySelectorAll('.edit-user').forEach(b=> b.onclick = e=> openEditUser(e.currentTarget.dataset.id));
+  document.querySelectorAll('.delete-user').forEach(b=> b.onclick = e=> deleteUser(e.currentTarget.dataset.id));
+}
+
+function renderBorrowsTable() {
+  borrowsTable.innerHTML = '';
+  Object.entries(borrowsCache).sort((a,b)=> (b[1].createdAt||0)-(a[1].createdAt||0)).forEach(([id, r]) => {
+    const status = escape(r.status||'');
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td class="px-3 py-2 align-top">${escape(r.borrowerName||'')}</td>
+      <td class="px-3 py-2 align-top">${escape(r.bookTitle||'')}</td>
+      <td class="px-3 py-2 align-top">${r.issueDate? new Date(r.issueDate).toLocaleDateString() : '—'}</td>
+      <td class="px-3 py-2 align-top">${r.dueDate? new Date(r.dueDate).toLocaleDateString() : '—'}</td>
+      <td class="px-3 py-2 align-top">${status}</td>
+      <td class="px-3 py-2 align-top">${Number(r.fine||0).toFixed(2)}</td>
+    `;
+    borrowsTable.appendChild(tr);
+  });
+}
+
+/* =========================================================================
+   CRUD actions for Books & Users
+   - Create Book / Edit Book modal handling
+   ========================================================================= */
+btnCreateBook.onclick = () => { openCreateBook(); };
+btnCreateUser.onclick = () => { openCreateUser(); };
+
+function openCreateBook(){
+  bookModalTitle.textContent = 'Create Book';
+  bookIdInput.value = '';
+  bookTitle.value = '';
+  bookAuthor.value = '';
+  bookCategory.value = '';
+  bookQuantity.value = 1;
+  bookAvailable.value = 1;
+  bookPublisher.value = '';
+  bookModal.classList.remove('hidden');
+}
+function openEditBook(id){
+  const b = booksCache[id];
+  if(!b) return showToast('Book not found','error');
+  bookModalTitle.textContent = 'Edit Book';
+  bookIdInput.value = id;
+  bookTitle.value = b.title||'';
+  bookAuthor.value = b.author||'';
+  bookCategory.value = b.category||'';
+  bookQuantity.value = Number(b.quantity||0);
+  bookAvailable.value = Number(b.available||0);
+  bookPublisher.value = b.publisher||'';
+  bookModal.classList.remove('hidden');
+}
+cancelBookBtn.onclick = ()=> bookModal.classList.add('hidden');
+
+document.getElementById('saveBookBtn').addEventListener('click', async (e) => {
+  e.preventDefault();
+  const id = bookIdInput.value;
+  const payload = {
+    title: bookTitle.value.trim(),
+    author: bookAuthor.value.trim(),
+    category: bookCategory.value.trim(),
+    quantity: Number(bookQuantity.value) || 0,
+    available: Number(bookAvailable.value) || 0,
+    publisher: bookPublisher.value.trim(),
+    updatedAt: Date.now()
+  };
+  try {
+    showLoading(true);
+    if(id){
+      await booksRef.child(id).update(payload);
+      showToast('Book updated','success');
+    } else {
+      payload.createdAt = Date.now();
+      await booksRef.push(payload);
+      showToast('Book created','success');
+    }
+    bookModal.classList.add('hidden');
+  } catch(err){
+    console.error(err); showToast('Save failed','error');
+  } finally { showLoading(false); }
+});
+
+async function deleteBook(id){
+  if(!confirm('Delete this book (removes DB entry)?')) return;
+  try{
+    showLoading(true);
+    await booksRef.child(id).remove();
+    showToast('Book removed','info');
+  }catch(err){ console.error(err); showToast('Delete failed','error'); }
+  finally{ showLoading(false); }
+}
+
+/* =========================================================================
+   CRUD actions for users
+   ========================================================================= */
+function openCreateUser(){
+  userModalTitle.textContent = 'Create User';
+  userIdInput.value = '';
+  userName.value = '';
+  userEmail.value = '';
+  userRole.value = 'user';
+  userModal.classList.remove('hidden');
+}
+function openEditUser(id){
+  const u = usersCache[id];
+  if(!u) return showToast('User not found','error');
+  userModalTitle.textContent = 'Edit User';
+  userIdInput.value = id;
+  userName.value = u.name||'';
+  userEmail.value = u.email||'';
+  userRole.value = u.role||'user';
+  userModal.classList.remove('hidden');
+}
+cancelUserBtn.onclick = ()=> userModal.classList.add('hidden');
+
+document.getElementById('saveUserBtn').addEventListener('click', async (e) => {
+  e.preventDefault();
+  const id = userIdInput.value;
+  const payload = {
+    name: userName.value.trim(),
+    email: userEmail.value.trim(),
+    role: userRole.value,
+    updatedAt: Date.now()
+  };
+  try {
+    showLoading(true);
+    if(id){
+      await usersRef.child(id).update(payload);
+      showToast('User updated','success');
+    } else {
+      payload.createdAt = Date.now();
+      await usersRef.push(payload);
+      showToast('User created','success');
+    }
+    userModal.classList.add('hidden');
+  } catch(err){ console.error(err); showToast('Save failed','error'); }
+  finally{ showLoading(false); }
+});
+
+async function deleteUser(id){
+  if(!confirm('Delete this user? This removes DB profile only.')) return;
+  try{ showLoading(true); await usersRef.child(id).remove(); showToast('User removed','info'); }
+  catch(err){ console.error(err); showToast('Delete failed','error'); }
+  finally{ showLoading(false); }
+}
+
+/* =========================================================================
+   Recent activities (push records into local array when borrows change)
+   We'll display most recent borrows/returns & CRUD actions (basic).
+   ========================================================================= */
+function pushRecentActivitiesFromBorrows(){
+  recentActivities.length = 0;
+  Object.entries(borrowsCache || {}).forEach(([id, r]) => {
+    recentActivities.push({
+      timestamp: r.updatedAt || r.createdAt || Date.now(),
+      text: `${r.borrowerName || 'User'} ${r.status === 'returned' ? 'returned' : 'borrowed'} "${r.bookTitle || ''}"`,
+      type: r.status === 'returned' ? 'return' : 'borrow'
+    });
+  });
+  // sort newest first
+  recentActivities.sort((a,b)=> b.timestamp - a.timestamp);
+  renderRecentActivities();
+}
+
+function renderRecentActivities(limit = 8){
+  recentActivitiesEl.innerHTML = '';
+  recentActivities.slice(0,limit).forEach(act => {
+    const li = document.createElement('li');
+    li.className = 'py-3';
+    li.innerHTML = `<div class="flex items-start justify-between gap-3">
+      <div>
+        <div class="text-sm font-medium">${escape(act.text)}</div>
+        <div class="text-xs text-slate-400 mt-1">${new Date(act.timestamp).toLocaleString()}</div>
+      </div>
+      <div class="text-xs ${act.type==='return'?'text-emerald-600':'text-amber-600'}">${act.type}</div>
+    </div>`;
+    recentActivitiesEl.appendChild(li);
+  });
+}
+
+/* =========================================================================
+   Charts: create & update
+   ========================================================================= */
+function initCharts(){
+  categoryChart = new Chart(categoryChartCtx, {
+    type: 'bar',
+    data: { labels: [], datasets: [{ label: 'Books', data: [], backgroundColor: '#60A5FA' }] },
+    options: { responsive:true, plugins:{legend:{display:false}} }
+  });
+  borrowsChart = new Chart(borrowsChartCtx, {
+    type: 'line',
+    data: { labels: [], datasets: [{ label: 'Borrows', data: [], borderColor: '#34D399', backgroundColor: 'rgba(52,211,153,0.12)', fill:true }] },
+    options: { responsive:true, plugins:{legend:{display:false}} }
+  });
+  availabilityChart = new Chart(availabilityChartCtx, {
+    type: 'doughnut',
+    data: { labels: ['Available','Unavailable'], datasets: [{ data: [0,0], backgroundColor: ['#10B981','#EF4444'] }] },
+    options: { responsive:true, plugins:{legend:{position:'bottom'}} }
+  });
+}
+
+function updateCardsAndCharts(){
+  // cards
+  const totalBooks = Object.keys(booksCache || {}).reduce((s,[k])=> s + 1, 0);
+  totalBooksEl.textContent = totalBooks;
+  const totalUsers = Object.keys(usersCache || {}).length;
+  totalUsersEl.textContent = totalUsers;
+
+  const borrowedCount = Object.values(borrowsCache || {}).filter(b=> b && b.status==='borrowed').length;
+  borrowedBooksEl.textContent = borrowedCount;
+  const returnedCount = Object.values(borrowsCache || {}).filter(b=> b && b.status==='returned').length;
+  returnedBooksEl.textContent = returnedCount;
+
+  // fines collected: sum of fine across borrows where fine exists
+  const fineTotal = Object.values(borrowsCache || {}).reduce((s, x) => s + (Number(x && x.fine) || 0), 0);
+  fineCollectedEl.textContent = '$' + fineTotal.toFixed(2);
+
+  // charts: category distribution
+  const categoryCounts = {};
+  Object.values(booksCache || {}).forEach(b => {
+    const c = (b.category || 'Uncategorized');
+    categoryCounts[c] = (categoryCounts[c]||0) + 1;
+  });
+  const catLabels = Object.keys(categoryCounts);
+  const catData = catLabels.map(l => categoryCounts[l]);
+  if(categoryChart) {
+    categoryChart.data.labels = catLabels;
+    categoryChart.data.datasets[0].data = catData;
+    categoryChart.update();
+  }
+
+  // borrows over last 30 days
+  const now = Date.now();
+  const dayMs = 24*60*60*1000;
+  const days = Array.from({length:30}, (_,i) => {
+    const ts = now - (29-i)*dayMs;
+    const day = new Date(ts);
+    const label = `${day.getMonth()+1}/${day.getDate()}`;
+    return { tsStart: new Date(day.getFullYear(), day.getMonth(), day.getDate()).getTime(), label };
+  });
+  const borrowCounts = days.map(d => {
+    const nextDay = d.tsStart + dayMs;
+    return Object.values(borrowsCache || {}).filter(b=>{
+      const t = b && (b.createdAt || 0);
+      return t >= d.tsStart && t < nextDay;
+    }).length;
+  });
+  if(borrowsChart){
+    borrowsChart.data.labels = days.map(d=>d.label);
+    borrowsChart.data.datasets[0].data = borrowCounts;
+    borrowsChart.update();
+  }
+
+  // availability pie
+  let avail = 0, unavail = 0;
+  Object.values(booksCache || {}).forEach(b => {
+    (Number(b.available||0) > 0) ? avail++ : unavail++;
+  });
+  if(availabilityChart){
+    availabilityChart.data.datasets[0].data = [avail, unavail];
+    availabilityChart.update();
+  }
+
+  // recent activities list
+  renderRecentActivities();
+}
+
+/* =========================================================================
+   Helper utils
+   ========================================================================= */
+function escape(s=''){ return String(s||'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;'); }
+
+/* =========================================================================
+   Init charts and some UI behaviors
+   ========================================================================= */
+initCharts();
+document.getElementById('toggleDark').addEventListener('click', toggleDark);
+document.getElementById('toggleDarkMobile').addEventListener('click', toggleDark);
+function toggleDark(){
+  document.documentElement.classList.toggle('dark');
+  const isDark = document.documentElement.classList.contains('dark');
+  localStorage.setItem('libra-dark', isDark ? '1' : '0');
+}
+if(localStorage.getItem('libra-dark') === '1') document.documentElement.classList.add('dark');
+
+document.getElementById('mobileMenuBtn').addEventListener('click', ()=>{
+  const mm = document.getElementById('mobileMenu');
+  mm.classList.toggle('hidden');
+  if(!mm.classList.contains('hidden')){
+    mm.innerHTML = document.querySelector('aside#sidebar nav').innerHTML;
+  }
+});
+
+/* =========================================================================
+   Close modals on outside click (basic)
+   ========================================================================= */
+[bookModal, userModal].forEach(mod => {
+  mod.addEventListener('click', (e) => {
+    if(e.target === mod) mod.classList.add('hidden');
+  });
+});
+
+/* =========================================================================
+   Recent activity inits & placeholder
+   ========================================================================= */
+renderRecentActivities();
+
+/* =========================================================================
+   Small accessibility: keyboard shortcuts
+   - N: create new book
+   ========================================================================= */
+document.addEventListener('keydown', (e)=> {
+  if(e.key === 'N' && e.ctrlKey){ openCreateBook(); }
+});
+
+/* =========================================================================
+   Initial fetch note
+   ========================================================================= */
+showToast('Dashboard connected. Listening for realtime updates.', 'info', 2000);
+
+</script>
+</body>
+</html>

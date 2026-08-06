@@ -1,0 +1,687 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>LibraSuite — Auth Demo (Firebase)</title>
+
+  <!-- Google font -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+
+  <!-- Tailwind CDN (single-file dev/demo setup) -->
+  <script>
+    window.tailwind = { config: { darkMode: 'class' } }
+  </script>
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <style>
+    html { font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial; }
+    /* Toasts */
+    .toast-enter { transform: translateY(12px); opacity: 0; }
+    .toast-show  { transform: translateY(0); opacity: 1; transition: all .28s cubic-bezier(.2,.9,.3,1); }
+    /* Spinner */
+    .spinner { border: 4px solid rgba(0,0,0,0.08); border-top-color: rgba(37,99,235,1); border-radius: 9999px; width: 40px; height: 40px; animation: spin .9s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg);} }
+  </style>
+</head>
+<body class="bg-gray-50 text-slate-800 min-h-screen">
+
+  <!--
+    FIREBASE AUTH DEMO
+    - Single-file authentication / registration demo
+    - Uses Firebase Authentication (email/password) and Realtime Database to store roles/profile
+    - IMPORTANT: Replace firebaseConfig with your project's config below
+  -->
+
+  <!-- ======================
+       NAV & HEADER
+       ====================== -->
+  <header class="bg-white shadow-sm">
+    <div class="max-w-4xl mx-auto px-4 py-4 flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <!-- Logo -->
+        <svg class="w-8 h-8 text-indigo-600" viewBox="0 0 24 24" fill="none"><path d="M3 5.5C3 4.119 4.12 3 5.5 3h11C18.88 3 20 4.119 20 5.5V19c0 .553-.447 1-1 1H5.5C4.12 20 3 18.881 3 17.5V5.5Z" stroke="currentColor" stroke-width="1.2"/></svg>
+        <div>
+          <div class="text-lg font-semibold">LibraSuite</div>
+          <div class="text-xs text-slate-400 -mt-1">Auth Demo</div>
+        </div>
+      </div>
+
+      <nav class="flex items-center gap-3">
+        <a href="#login" class="text-sm text-slate-600 hover:text-indigo-600">Login</a>
+        <a href="#register" class="text-sm px-3 py-1 bg-indigo-600 text-white rounded hover:opacity-95">Register</a>
+      </nav>
+    </div>
+  </header>
+
+  <!-- ======================
+       MAIN LAYOUT: LEFT = Forms, RIGHT = Info / Dashboards
+       ====================== -->
+  <main class="max-w-6xl mx-auto px-4 py-8 grid grid-cols-1 lg:grid-cols-2 gap-8">
+
+    <!-- ======================
+         LEFT: AUTH FORMS
+         - Register
+         - Login
+         - Forgot Password
+         ====================== -->
+    <section class="space-y-8">
+
+      <!-- ======================
+           REGISTER FORM
+           ====================== -->
+      <div id="registerCard" class="bg-white rounded-lg shadow p-6">
+        <!-- Section comment: Registration -->
+        <h2 class="text-xl font-semibold mb-3">Create an account</h2>
+        <p class="text-sm text-slate-500 mb-4">Register with email & password. Optionally enter a demo admin code to mark account as admin (only for demo).</p>
+
+        <form id="registerForm" class="space-y-3">
+          <div>
+            <label class="text-sm">Full name</label>
+            <input id="regName" required type="text" class="mt-1 block w-full px-3 py-2 rounded border focus:outline-none focus:ring-2 focus:ring-indigo-200" placeholder="Your full name">
+          </div>
+
+          <div>
+            <label class="text-sm">Email</label>
+            <input id="regEmail" required type="email" class="mt-1 block w-full px-3 py-2 rounded border focus:outline-none focus:ring-2 focus:ring-indigo-200" placeholder="you@example.com">
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label class="text-sm">Password</label>
+              <input id="regPassword" required type="password" class="mt-1 block w-full px-3 py-2 rounded border focus:outline-none focus:ring-2 focus:ring-indigo-200" placeholder="Min 8 chars, 1 uppercase, 1 number">
+            </div>
+            <div>
+              <label class="text-sm">Confirm Password</label>
+              <input id="regConfirm" required type="password" class="mt-1 block w-full px-3 py-2 rounded border focus:outline-none focus:ring-2 focus:ring-indigo-200" placeholder="Re-type password">
+            </div>
+          </div>
+
+          <div>
+            <label class="text-sm">Admin Code (demo only)</label>
+            <input id="regAdminCode" type="text" class="mt-1 block w-full px-3 py-2 rounded border focus:outline-none focus:ring-2 focus:ring-indigo-200" placeholder="Leave empty for normal user">
+            <p class="text-xs text-slate-400 mt-1">If you provide the correct admin code (demo only), the new account will be flagged as admin in the Realtime DB.</p>
+          </div>
+
+          <div class="flex items-center gap-2">
+            <input id="regRemember" type="checkbox" class="h-4 w-4">
+            <label class="text-sm">Remember me (persist login)</label>
+          </div>
+
+          <div class="flex items-center gap-3">
+            <button id="btnRegister" type="submit" class="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded">Register</button>
+            <button id="btnCancelRegister" type="button" class="text-sm text-slate-500">Clear</button>
+          </div>
+        </form>
+      </div>
+
+      <!-- ======================
+           LOGIN FORM
+           ====================== -->
+      <div id="loginCard" class="bg-white rounded-lg shadow p-6">
+        <!-- Section comment: Login -->
+        <h2 class="text-xl font-semibold mb-3">Sign in</h2>
+        <p class="text-sm text-slate-500 mb-4">Login with email and password. Admins will be routed to an Admin panel after login.</p>
+
+        <form id="loginForm" class="space-y-3">
+          <div>
+            <label class="text-sm">Email</label>
+            <input id="loginEmail" required type="email" class="mt-1 block w-full px-3 py-2 rounded border focus:outline-none focus:ring-2 focus:ring-indigo-200">
+          </div>
+
+          <div>
+            <label class="text-sm">Password</label>
+            <input id="loginPassword" required type="password" class="mt-1 block w-full px-3 py-2 rounded border focus:outline-none focus:ring-2 focus:ring-indigo-200">
+          </div>
+
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-2">
+              <input id="loginRemember" type="checkbox" class="h-4 w-4">
+              <label class="text-sm">Remember me</label>
+            </div>
+            <button id="forgotBtn" type="button" class="text-sm text-indigo-600 hover:underline">Forgot password?</button>
+          </div>
+
+          <div class="flex items-center gap-3">
+            <button id="btnLogin" type="submit" class="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded">Login</button>
+            <button id="btnLogout" type="button" class="inline-flex items-center gap-2 px-4 py-2 bg-slate-200 text-slate-700 rounded hidden">Logout</button>
+          </div>
+
+          <div id="emailNotVerified" class="hidden p-3 mt-3 rounded bg-amber-50 border border-amber-200 text-amber-700 text-sm">
+            Your email is not verified. <button id="resendVerify" class="underline text-amber-700">Resend verification email</button>
+          </div>
+        </form>
+      </div>
+
+      <!-- ======================
+           FORGOT PASSWORD FORM (toggle)
+           ====================== -->
+      <div id="forgotCard" class="bg-white rounded-lg shadow p-6 hidden">
+        <!-- Section comment: Forgot password -->
+        <h2 class="text-xl font-semibold mb-3">Reset password</h2>
+        <p class="text-sm text-slate-500 mb-4">Enter your email to receive a password reset link.</p>
+
+        <form id="forgotForm" class="space-y-3">
+          <div>
+            <label class="text-sm">Email</label>
+            <input id="forgotEmail" required type="email" class="mt-1 block w-full px-3 py-2 rounded border focus:outline-none focus:ring-2 focus:ring-indigo-200">
+          </div>
+
+          <div class="flex items-center gap-3">
+            <button id="btnForgot" type="submit" class="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded">Send Reset Link</button>
+            <button id="cancelForgot" type="button" class="text-sm text-slate-500">Cancel</button>
+          </div>
+        </form>
+      </div>
+
+    </section>
+
+    <!-- ======================
+         RIGHT: DASHBOARDS & INFO
+         - Shows user dashboard after login or admin panel if admin
+         - Also shows helpful instructions
+         ====================== -->
+    <aside class="space-y-6">
+
+      <!-- ======================
+           LIVE STATUS / USER INFO
+           ====================== -->
+      <div id="userCard" class="bg-white rounded-lg shadow p-6">
+        <!-- Section comment: Current user info -->
+        <h3 class="text-lg font-semibold mb-2">Current user</h3>
+        <div id="userInfo" class="text-sm text-slate-600">Not signed in</div>
+        <div class="mt-3 flex gap-2">
+          <button id="openDashboard" class="px-3 py-1 bg-slate-100 rounded text-sm hidden">Open Dashboard</button>
+          <button id="forceSignOut" class="px-3 py-1 bg-rose-50 text-rose-600 rounded text-sm hidden">Sign out</button>
+        </div>
+      </div>
+
+      <!-- ======================
+           USER DASHBOARD
+           ====================== -->
+      <div id="dashboardCard" class="bg-white rounded-lg shadow p-6 hidden">
+        <!-- Section comment: User Dashboard -->
+        <h3 class="text-lg font-semibold mb-1">User Dashboard</h3>
+        <p class="text-sm text-slate-500 mb-3">Welcome! You are signed in as a regular user.</p>
+        <ul class="list-disc list-inside text-sm text-slate-600">
+          <li>View or borrow books</li>
+          <li>Manage profile</li>
+          <li>Request library services</li>
+        </ul>
+        <div class="mt-4">
+          <button id="logoutUserBtn" class="px-4 py-2 bg-indigo-600 text-white rounded">Logout</button>
+        </div>
+      </div>
+
+      <!-- ======================
+           ADMIN DASHBOARD
+           ====================== -->
+      <div id="adminCard" class="bg-white rounded-lg shadow p-6 hidden">
+        <!-- Section comment: Admin Dashboard -->
+        <h3 class="text-lg font-semibold mb-1">Admin Panel</h3>
+        <p class="text-sm text-slate-500 mb-3">You are signed in as an admin. Manage users and collections from here.</p>
+        <ul class="list-disc list-inside text-sm text-slate-600">
+          <li>Approve content</li>
+          <li>Manage users and roles</li>
+          <li>System analytics</li>
+        </ul>
+
+        <div class="mt-4 grid grid-cols-2 gap-2">
+          <button id="adminLogoutBtn" class="col-span-2 px-4 py-2 bg-rose-50 text-rose-600 rounded">Logout</button>
+        </div>
+      </div>
+
+      <!-- ======================
+           HELP / NOTES
+           ====================== -->
+      <div class="bg-white rounded-lg shadow p-6">
+        <!-- Section comment: Notes and setup instructions -->
+        <h3 class="text-lg font-semibold">Setup notes</h3>
+        <ol class="mt-2 text-sm text-slate-600 list-decimal list-inside space-y-1">
+          <li>Replace the firebaseConfig object below with your Firebase project credentials.</li>
+          <li>In production, create admin accounts securely server-side (don't rely on client-side codes).</li>
+          <li>Realtime Database rules must allow writes for authenticated users; tighten them for production.</li>
+        </ol>
+      </div>
+    </aside>
+  </main>
+
+  <!-- ======================
+       TOASTS & LOADING OVERLAY
+       - Toast container used for success/error messages
+       - Loading overlay covers the screen during async operations
+       ====================== -->
+  <div id="toastContainer" class="fixed bottom-6 right-6 flex flex-col gap-2 z-50"></div>
+
+  <div id="loadingOverlay" class="fixed inset-0 z-40 hidden items-center justify-center bg-black/20">
+    <div class="bg-white dark:bg-slate-800 rounded-lg p-6 flex items-center gap-4 shadow">
+      <div class="spinner" aria-hidden="true"></div>
+      <div>
+        <div class="font-medium">Working…</div>
+        <div class="text-xs text-slate-500">Please wait while we process your request.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ======================
+       FIREBASE SDKS (compat for simpler single-file demo)
+       - Using compat libraries here for concise code (firebase.auth(), firebase.database())
+       - Replace version as needed. Using v9 compat build.
+       ====================== -->
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
+
+  <script>
+    /*****************************************************************************
+      Firebase Authentication + Realtime DB demo
+      - Replace firebaseConfig with your project's values
+      - Admin code is included only for demo / local use; do NOT publish it in production.
+    *****************************************************************************/
+
+    // ------------------------
+    // CONFIG: Replace these values
+    // ------------------------
+    const firebaseConfig = {
+      apiKey: "AIzaSyBBxENou0wJoiIALCm27TvDQEKHiGdlVf4",
+      authDomain: "digital-library-3cb1c.firebaseapp.com",
+      databaseURL: "https://digital-library-3cb1c-default-rtdb.asia-southeast1.firebasedatabase.app",
+      projectId: "digital-library-3cb1c",
+      storageBucket: "digital-library-3cb1c.firebasestorage.app",
+      messagingSenderId: "3671589649",
+      appId: "1:3671589649:web:83e9e90236f6a88f07c2b0",
+    };
+
+    // Demo-only admin code. In production, grant admin role via a trusted server or Firebase custom claims.
+    const DEMO_ADMIN_CODE = "MAGIC-ADMIN-CODE-123"; // Replace or remove in production
+
+    // Initialize Firebase
+    firebase.initializeApp(firebaseConfig);
+    const auth = firebase.auth();
+    const db = firebase.database();
+
+    // DOM refs
+    const loadingOverlay = document.getElementById('loadingOverlay');
+    const toastContainer = document.getElementById('toastContainer');
+
+    // Buttons / Forms
+    const registerForm = document.getElementById('registerForm');
+    const loginForm = document.getElementById('loginForm');
+    const forgotForm = document.getElementById('forgotForm');
+
+    const forgotCard = document.getElementById('forgotCard');
+    const forgotBtn = document.getElementById('forgotBtn');
+    const cancelForgot = document.getElementById('cancelForgot');
+    const forgotToggleBtn = document.getElementById('forgotBtn');
+
+    const btnRegister = document.getElementById('btnRegister');
+    const btnLogin = document.getElementById('btnLogin');
+    const btnLogout = document.getElementById('btnLogout');
+
+    // User & dashboards
+    const userInfo = document.getElementById('userInfo');
+    const openDashboard = document.getElementById('openDashboard');
+    const forceSignOut = document.getElementById('forceSignOut');
+
+    const dashboardCard = document.getElementById('dashboardCard');
+    const adminCard = document.getElementById('adminCard');
+
+    const logoutUserBtn = document.getElementById('logoutUserBtn');
+    const adminLogoutBtn = document.getElementById('adminLogoutBtn');
+
+    const emailNotVerified = document.getElementById('emailNotVerified');
+    const resendVerifyBtn = document.getElementById('resendVerify');
+
+    // Utility: show/hide loading overlay
+    function showLoading(show = true) {
+      loadingOverlay.classList.toggle('hidden', !show);
+    }
+
+    // Utility: toasts
+    function showToast(message, type = 'success', duration = 4000) {
+      const id = 't' + Date.now();
+      const el = document.createElement('div');
+      el.id = id;
+      el.setAttribute('role', 'status');
+      const base = 'px-4 py-2 rounded shadow flex items-center gap-3 max-w-sm';
+      if (type === 'success') el.className = base + ' bg-emerald-50 text-emerald-800 border border-emerald-100 toast-enter';
+      else if (type === 'error') el.className = base + ' bg-rose-50 text-rose-800 border border-rose-100 toast-enter';
+      else el.className = base + ' bg-slate-50 text-slate-800 border border-slate-100 toast-enter';
+      el.innerHTML = `<div class="text-sm">${message}</div>`;
+      toastContainer.appendChild(el);
+      // show animation
+      requestAnimationFrame(() => el.classList.add('toast-show'));
+      // dismiss
+      setTimeout(() => {
+        el.classList.remove('toast-show');
+        setTimeout(() => el.remove(), 300);
+      }, duration);
+    }
+
+    // ------------------------
+    // Validation helpers
+    // ------------------------
+    function isValidEmail(email) {
+      // basic RFC-like check
+      const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      return re.test(String(email).toLowerCase());
+    }
+
+    function isValidPassword(password) {
+      // At least 8 chars, 1 uppercase, 1 digit. Modify as needed.
+      const re = /^(?=.*[A-Z])(?=.*\d).{8,}$/;
+      return re.test(password);
+    }
+
+    // ------------------------
+    // Registration flow
+    // ------------------------
+    registerForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const name = document.getElementById('regName').value.trim();
+      const email = document.getElementById('regEmail').value.trim();
+      const password = document.getElementById('regPassword').value;
+      const confirm = document.getElementById('regConfirm').value;
+      const adminCode = document.getElementById('regAdminCode').value.trim();
+      const remember = document.getElementById('regRemember').checked;
+
+      // Basic validation
+      if (!name) { showToast('Please enter your full name', 'error'); return; }
+      if (!isValidEmail(email)) { showToast('Please enter a valid email', 'error'); return; }
+      if (!isValidPassword(password)) { showToast('Password must be 8+ chars and include an uppercase letter and a number', 'error'); return; }
+      if (password !== confirm) { showToast('Passwords do not match', 'error'); return; }
+
+      try {
+        showLoading(true);
+
+        // Set persistence based on Remember Me
+        await auth.setPersistence(remember ? firebase.auth.Auth.Persistence.LOCAL : firebase.auth.Auth.Persistence.SESSION);
+
+        // Create user
+        const userCred = await auth.createUserWithEmailAndPassword(email, password);
+        const user = userCred.user;
+
+        // Send email verification
+        await user.sendEmailVerification();
+
+        // Determine role (demo only: check admin code)
+        const role = (adminCode && adminCode === DEMO_ADMIN_CODE) ? 'admin' : 'user';
+
+        // Save profile to Realtime Database under /users/{uid}
+        const profile = {
+          uid: user.uid,
+          name,
+          email,
+          role,
+          createdAt: Date.now()
+        };
+        await db.ref('users/' + user.uid).set(profile);
+
+        showToast('Registration successful! Verification email sent. Check your inbox.', 'success');
+        registerForm.reset();
+      } catch (err) {
+        console.error('register error', err);
+        showToast(err.message || 'Registration failed', 'error');
+      } finally {
+        showLoading(false);
+      }
+    });
+
+    // Cancel/Clear register
+    document.getElementById('btnCancelRegister').addEventListener('click', () => registerForm.reset());
+
+    // ------------------------
+    // Login flow (role-based)
+    // ------------------------
+    loginForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const email = document.getElementById('loginEmail').value.trim();
+      const password = document.getElementById('loginPassword').value;
+      const remember = document.getElementById('loginRemember').checked;
+
+      if (!isValidEmail(email)) { showToast('Please enter a valid email', 'error'); return; }
+      if (!password || password.length < 6) { showToast('Please enter your password', 'error'); return; }
+
+      try {
+        showLoading(true);
+
+        // Set persistence per Remember Me
+        await auth.setPersistence(remember ? firebase.auth.Auth.Persistence.LOCAL : firebase.auth.Auth.Persistence.SESSION);
+
+        // Sign in
+        const cred = await auth.signInWithEmailAndPassword(email, password);
+        const user = cred.user;
+
+        // Check email verification
+        if (!user.emailVerified) {
+          // Show verification UI with option to resend
+          emailNotVerified.classList.remove('hidden');
+          showToast('Please verify your email before continuing', 'error');
+          return;
+        } else {
+          emailNotVerified.classList.add('hidden');
+        }
+
+        // Read user role from Realtime DB, then route appropriately
+        const snap = await db.ref('users/' + user.uid + '/role').once('value');
+        const role = snap.exists() ? snap.val() : 'user';
+
+        // Update UI
+        updateSignedInUI(user, role);
+
+        // Inform user
+        showToast('Signed in successfully as ' + role, 'success');
+      } catch (err) {
+        console.error('login error', err);
+        showToast(err.message || 'Login failed', 'error');
+      } finally {
+        showLoading(false);
+      }
+    });
+
+    // Resend verification email
+    resendVerifyBtn.addEventListener('click', async () => {
+      const currentUser = auth.currentUser;
+      if (!currentUser) { showToast('No user is signed in to resend verification', 'error'); return; }
+      try {
+        showLoading(true);
+        await currentUser.sendEmailVerification();
+        showToast('Verification email resent', 'success');
+      } catch (err) {
+        console.error(err);
+        showToast(err.message || 'Failed to resend verification', 'error');
+      } finally {
+        showLoading(false);
+      }
+    });
+
+    // ------------------------
+    // Forgot password
+    // ------------------------
+    // Show forgot card
+    forgotToggleBtn.addEventListener('click', () => {
+      forgotCard.classList.remove('hidden');
+      // Optionally hide login card for clarity
+      // document.getElementById('loginCard').classList.add('hidden');
+    });
+
+    cancelForgot.addEventListener('click', () => {
+      forgotCard.classList.add('hidden');
+    });
+
+    forgotForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const email = document.getElementById('forgotEmail').value.trim();
+      if (!isValidEmail(email)) { showToast('Please enter a valid email', 'error'); return; }
+      try {
+        showLoading(true);
+        await auth.sendPasswordResetEmail(email);
+        showToast('Password reset email sent. Check your inbox.', 'success');
+        forgotForm.reset();
+        forgotCard.classList.add('hidden');
+      } catch (err) {
+        console.error('forgot error', err);
+        showToast(err.message || 'Failed to send reset email', 'error');
+      } finally {
+        showLoading(false);
+      }
+    });
+
+    // ------------------------
+    // Sign-out / Logout flows
+    // ------------------------
+    async function signOut() {
+      try {
+        await auth.signOut();
+        showToast('Signed out', 'success');
+        updateSignedOutUI();
+      } catch (err) {
+        console.error('signout', err);
+        showToast('Sign out failed', 'error');
+      }
+    }
+
+    // Buttons for logout
+    logoutUserBtn.addEventListener('click', signOut);
+    adminLogoutBtn.addEventListener('click', signOut);
+    document.getElementById('forceSignOut').addEventListener('click', signOut);
+
+    // ------------------------
+    // Update UI on sign-in / sign-out
+    // ------------------------
+    function updateSignedInUI(user, role = 'user') {
+      // show user info
+      userInfo.innerHTML = `<div class="font-medium">${user.displayName || user.email}</div><div class="text-xs text-slate-500">${user.email}</div><div class="text-xs text-slate-400">Role: ${role}</div>`;
+      document.getElementById('btnLogout').classList.remove('hidden');
+      document.getElementById('btnLogin').classList.add('hidden');
+      document.getElementById('btnRegister').classList.add('hidden');
+
+      // Show appropriate dashboard
+      if (role === 'admin') {
+        adminCard.classList.remove('hidden');
+        dashboardCard.classList.add('hidden');
+      } else {
+        dashboardCard.classList.remove('hidden');
+        adminCard.classList.add('hidden');
+      }
+
+      // show sign out controls
+      document.getElementById('openDashboard').classList.remove('hidden');
+      document.getElementById('forceSignOut').classList.remove('hidden');
+    }
+
+    function updateSignedOutUI() {
+      userInfo.textContent = 'Not signed in';
+      document.getElementById('btnLogout').classList.add('hidden');
+      document.getElementById('btnLogin').classList.remove('hidden');
+      document.getElementById('btnRegister').classList.remove('hidden');
+
+      // hide dashboards
+      dashboardCard.classList.add('hidden');
+      adminCard.classList.add('hidden');
+
+      // hide controls
+      document.getElementById('openDashboard').classList.add('hidden');
+      document.getElementById('forceSignOut').classList.add('hidden');
+
+      // hide verification notice
+      emailNotVerified.classList.add('hidden');
+    }
+
+    // Hook the top nav logout
+    document.getElementById('btnLogout').addEventListener('click', signOut);
+
+    // Open dashboard button (scrolls to dashboard area)
+    openDashboard.addEventListener('click', () => {
+      if (!dashboardCard.classList.contains('hidden')) dashboardCard.scrollIntoView({ behavior: 'smooth' });
+      if (!adminCard.classList.contains('hidden')) adminCard.scrollIntoView({ behavior: 'smooth' });
+    });
+
+    // ------------------------
+    // Auth state observer: runs on page load and whenever user's sign-in state changes
+    // ------------------------
+    auth.onAuthStateChanged(async (user) => {
+      if (user) {
+        // If email is not verified, show the notice but still reflect basic user info
+        if (!user.emailVerified) {
+          emailNotVerified.classList.remove('hidden');
+        } else {
+          emailNotVerified.classList.add('hidden');
+        }
+
+        // Get role from Realtime DB
+        try {
+          const snap = await db.ref('users/' + user.uid + '/role').once('value');
+          const role = snap.exists() ? snap.val() : 'user';
+          updateSignedInUI(user, role);
+        } catch (err) {
+          console.error('failed to fetch role', err);
+          updateSignedInUI(user, 'user');
+        }
+      } else {
+        // No user
+        updateSignedOutUI();
+      }
+    });
+
+    // ------------------------
+    // Small UI niceties: allow pressing Enter to submit, and small keyboard focus improvements
+    // ------------------------
+    ['regEmail','regPassword','loginEmail','loginPassword','forgotEmail'].forEach(id => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          // delegate to nearest form submit
+          e.preventDefault();
+          const form = el.closest('form');
+          if (form) form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+        }
+      });
+    });
+
+    // ------------------------
+    // Example: Fetch list of users for admin (demo)
+    // NOTE: In a real app this should be restricted at server or DB rules level.
+    // This small helper shows how admins might read user profiles.
+    // ------------------------
+    async function fetchUsersListDemo() {
+      try {
+        showLoading(true);
+        const snap = await db.ref('users').limitToFirst(100).once('value');
+        const users = snap.val();
+        console.log('users snapshot', users);
+        // For demo, we will create a tiny summary in console; not rendering here
+      } catch (err) {
+        console.error('fetch users', err);
+      } finally {
+        showLoading(false);
+      }
+    }
+
+    // Optionally fetch users on admin open (demo)
+    document.getElementById('openDashboard').addEventListener('click', async () => {
+      // show a toast and fetch small sample if admin
+      const user = auth.currentUser;
+      if (!user) { showToast('Sign in first', 'error'); return; }
+      try {
+        const snap = await db.ref('users/' + user.uid + '/role').once('value');
+        const role = snap.exists() ? snap.val() : 'user';
+        if (role === 'admin') {
+          showToast('Loading admin data…', 'info', 1500);
+          fetchUsersListDemo();
+        } else {
+          showToast('Redirecting to your dashboard…', 'success', 1200);
+        }
+      } catch (err) {
+        console.error(err);
+      }
+    });
+
+    // ------------------------
+    // Notes on security & production readiness (console)
+    // ------------------------
+    console.info('Firebase Auth demo initialized. Remember to replace config and remove DEMO_ADMIN_CODE in production.');
+  </script>
+</body>
+</html>

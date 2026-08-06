@@ -1,0 +1,796 @@
+<!doctype html>
+<html lang="en" class="scroll-smooth">
+<head>
+  <!--
+    Digital Library Module (single-file)
+    - Tech: HTML5 + Tailwind CSS CDN + Advanced JavaScript
+    - Firebase: Realtime Database + Storage (compat SDKs used for single-file demo)
+    - PDF rendering: PDF.js (client) for reliable preview, navigation and reading-progress tracking
+    - Features:
+      * Upload PDF (+ cover image + metadata)
+      * Read online (PDF.js viewer with page controls)
+      * Download PDF
+      * Preview PDF (thumbnails & reader modal)
+      * Book cover images
+      * Recently added list (realtime)
+      * Favourite books (per-client ID stored in Realtime DB)
+      * Reading progress persisted in Realtime DB per client
+      * Responsive UI, toasts, loading spinner
+    - Important:
+      * Replace firebaseConfig with your project's credentials before use.
+      * Configure CORS on Firebase Storage to allow PDF display in browser (required).
+      * In production, add authentication and secure DB rules for uploads and user data.
+  -->
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>LibraSuite — Digital Library</title>
+
+  <!-- Google font -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+
+  <!-- Tailwind CDN -->
+  <script>
+    window.tailwind = { config: { darkMode: 'class' } }
+  </script>
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- PDF.js (for in-browser PDF rendering) -->
+  <script src="https://unpkg.com/pdfjs-dist@3.11.172/build/pdf.min.js"></script>
+
+  <style>
+    html { font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial; }
+    .toast-enter { transform: translateY(12px); opacity: 0; }
+    .toast-show  { transform: translateY(0); opacity: 1; transition: all .28s cubic-bezier(.2,.9,.3,1); }
+    .spinner { border: 4px solid rgba(0,0,0,0.08); border-top-color: rgba(37,99,235,1); border-radius: 9999px; width: 36px; height: 36px; animation: spin .9s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg);} }
+    /* small responsive tweaks */
+    .book-card:hover { transform: translateY(-6px); transition: transform .18s ease; }
+  </style>
+</head>
+<body class="bg-gray-50 text-slate-800">
+
+  <!-- =========================
+       HEADER
+       ========================= -->
+  <header class="bg-white shadow sticky top-0 z-40">
+    <div class="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <svg class="w-8 h-8 text-indigo-600" viewBox="0 0 24 24" fill="none"><path d="M3 5.5C3 4.119 4.12 3 5.5 3h11C18.88 3 20 4.119 20 5.5V19c0 .553-.447 1-1 1H5.5C4.12 20 3 18.881 3 17.5V5.5Z" stroke="currentColor" stroke-width="1.2"/></svg>
+        <div>
+          <div class="text-lg font-semibold">LibraSuite</div>
+          <div class="text-xs text-slate-400 -mt-1">Digital Library</div>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-3">
+        <div id="clientBadge" class="text-sm text-slate-500"></div>
+        <button id="uploadToggle" class="px-3 py-1 bg-indigo-600 text-white rounded text-sm">Upload PDF</button>
+      </div>
+    </div>
+  </header>
+
+  <!-- =========================
+       MAIN LAYOUT
+       Left: Upload form & favourites / recently
+       Right: Library grid & reader modal
+       ========================= -->
+  <main class="max-w-7xl mx-auto px-4 py-8 grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+    <!-- LEFT COLUMN: Upload + Recently Added + Favourites -->
+    <aside class="space-y-6 lg:col-span-1">
+
+      <!-- Upload panel (toggle hidden by default) -->
+      <div id="uploadPanel" class="bg-white rounded-lg shadow p-6 hidden">
+        <!-- Section comment: Upload PDF -->
+        <h2 class="text-lg font-semibold mb-2">Upload a PDF</h2>
+        <form id="uploadForm" class="space-y-3">
+          <div>
+            <label class="text-sm">Title <span class="text-rose-600">*</span></label>
+            <input id="uTitle" required type="text" class="mt-1 w-full px-3 py-2 rounded border" placeholder="Book title">
+          </div>
+          <div>
+            <label class="text-sm">Author</label>
+            <input id="uAuthor" type="text" class="mt-1 w-full px-3 py-2 rounded border" placeholder="Author(s)">
+          </div>
+          <div>
+            <label class="text-sm">Description</label>
+            <textarea id="uDesc" rows="3" class="mt-1 w-full px-3 py-2 rounded border" placeholder="Short description"></textarea>
+          </div>
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="text-sm">Language</label>
+              <input id="uLang" type="text" class="mt-1 w-full px-3 py-2 rounded border" placeholder="English">
+            </div>
+            <div>
+              <label class="text-sm">Category</label>
+              <input id="uCat" type="text" class="mt-1 w-full px-3 py-2 rounded border" placeholder="Category">
+            </div>
+          </div>
+
+          <div>
+            <label class="text-sm">Cover Image (optional)</label>
+            <input id="uCover" type="file" accept="image/*" class="mt-1 w-full text-sm" />
+            <div id="coverPreview" class="mt-2 w-full h-40 bg-gray-100 rounded flex items-center justify-center text-sm text-slate-500 overflow-hidden">No cover selected</div>
+          </div>
+
+          <div>
+            <label class="text-sm">PDF File <span class="text-rose-600">*</span></label>
+            <input id="uPdf" required type="file" accept="application/pdf" class="mt-1 w-full text-sm" />
+            <div id="pdfPreview" class="mt-2 text-xs text-slate-500">Select a PDF (max 50MB recommended)</div>
+          </div>
+
+          <div class="flex items-center gap-3">
+            <button id="btnUpload" type="submit" class="px-4 py-2 bg-indigo-600 text-white rounded">Upload</button>
+            <button id="btnCancelUpload" type="button" class="px-4 py-2 bg-slate-100 rounded">Cancel</button>
+          </div>
+        </form>
+      </div>
+
+      <!-- Favourite Books -->
+      <div class="bg-white rounded-lg shadow p-4">
+        <!-- Section comment: Favourite Books -->
+        <h3 class="text-md font-semibold mb-2">Favourite Books</h3>
+        <div id="favList" class="space-y-2 text-sm text-slate-600">
+          <!-- JS populates favourites -->
+        </div>
+        <div class="mt-3 text-xs text-slate-400">Favourites persist to your client profile (anonymous ID).</div>
+      </div>
+
+      <!-- Recently Added -->
+      <div class="bg-white rounded-lg shadow p-4">
+        <!-- Section comment: Recently Added -->
+        <h3 class="text-md font-semibold mb-2">Recently Added</h3>
+        <div id="recentList" class="space-y-3">
+          <!-- JS populates recently added items -->
+        </div>
+      </div>
+    </aside>
+
+    <!-- RIGHT COLUMN: Library Grid + Reader -->
+    <section class="lg:col-span-2 space-y-6">
+
+      <!-- Search & Filters -->
+      <div class="bg-white rounded-lg shadow p-4 flex flex-wrap items-center gap-3 justify-between">
+        <!-- Section comment: Search -->
+        <div class="flex items-center gap-3 flex-1 min-w-0">
+          <input id="search" type="search" placeholder="Search title, author, category..." class="flex-1 px-4 py-2 rounded border" />
+          <button id="clearSearch" class="px-3 py-2 bg-slate-100 rounded hidden">Clear</button>
+        </div>
+        <div class="flex items-center gap-3 text-sm text-slate-500">
+          <span id="totalBooksCount">0 books</span>
+        </div>
+      </div>
+
+      <!-- Library grid -->
+      <div id="libraryGrid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        <!-- JS populates cards -->
+      </div>
+    </section>
+  </main>
+
+  <!-- =========================
+       READER MODAL (PDF.js)
+       - Provides read online, preview, page navigation, zoom, progress tracking
+       - Progress saved to Realtime DB under /userProgress/{clientId}/{bookId}
+       ========================= -->
+  <div id="readerModal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/70 p-4">
+    <div class="bg-white rounded-lg shadow-lg w-full max-w-6xl h-[85vh] flex flex-col overflow-hidden">
+      <!-- Reader header -->
+      <div class="flex items-center justify-between p-3 border-b">
+        <div class="flex items-center gap-3">
+          <div id="readerTitle" class="font-semibold"></div>
+          <div id="readerAuthor" class="text-sm text-slate-500"></div>
+        </div>
+        <div class="flex items-center gap-3">
+          <button id="downloadPdfBtn" class="px-3 py-1 text-sm bg-slate-100 rounded">Download</button>
+          <button id="toggleFavBtn" class="px-3 py-1 text-sm bg-amber-50 rounded">♡ Favourite</button>
+          <button id="closeReaderBtn" class="px-3 py-1 text-sm bg-rose-50 text-rose-600 rounded">Close</button>
+        </div>
+      </div>
+
+      <!-- Reader toolbar -->
+      <div class="flex items-center gap-3 p-3 border-b">
+        <button id="prevPage" class="px-3 py-1 bg-slate-100 rounded">Prev</button>
+        <span class="text-sm">Page <span id="pageNum">0</span> / <span id="pageCount">0</span></span>
+        <button id="nextPage" class="px-3 py-1 bg-slate-100 rounded">Next</button>
+
+        <div class="ml-6 flex items-center gap-2">
+          <label class="text-sm text-slate-500">Zoom</label>
+          <select id="zoomSelect" class="px-2 py-1 rounded border text-sm">
+            <option value="0.75">75%</option>
+            <option value="1" selected>100%</option>
+            <option value="1.25">125%</option>
+            <option value="1.5">150%</option>
+            <option value="2">200%</option>
+          </select>
+        </div>
+
+        <div class="ml-auto text-sm text-slate-500">
+          Progress: <span id="readProgress">0%</span>
+        </div>
+      </div>
+
+      <!-- PDF canvas container (scrollable pages) -->
+      <div id="pdfContainer" class="relative flex-1 overflow-auto bg-slate-800/5 p-4" style="--pdf-gap:16px;">
+        <div id="pdfPages" class="mx-auto"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- =========================
+       TOASTS & LOADING
+       ========================= -->
+  <div id="toastContainer" class="fixed bottom-6 right-6 flex flex-col gap-2 z-50"></div>
+  <div id="loadingOverlay" class="fixed inset-0 z-40 hidden items-center justify-center bg-black/20">
+    <div class="bg-white rounded-lg p-6 flex items-center gap-4 shadow">
+      <div class="spinner" aria-hidden="true"></div>
+      <div>
+        <div class="font-medium">Working…</div>
+        <div class="text-xs text-slate-500">This may take a few moments</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- =========================
+       Firebase SDKs (compat)
+       ========================= -->
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-storage-compat.js"></script>
+
+  <script>
+    /*****************************************************************************
+      CONFIGURATION
+      - Replace firebaseConfig with your Firebase project's credentials.
+      - Ensure CORS on Firebase Storage allows usage with PDF.js (set allowed origins).
+    *****************************************************************************/
+    const firebaseConfig = {
+      apiKey: "AIzaSyBBxENou0wJoiIALCm27TvDQEKHiGdlVf4",
+      authDomain: "digital-library-3cb1c.firebaseapp.com",
+      databaseURL: "https://digital-library-3cb1c-default-rtdb.asia-southeast1.firebasedatabase.app",
+      projectId: "digital-library-3cb1c",
+      storageBucket: "digital-library-3cb1c.firebasestorage.app",
+      messagingSenderId: "3671589649",
+      appId: "1:3671589649:web:83e9e90236f6a88f07c2b0",
+    };
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+    const storage = firebase.storage();
+
+    /*****************************************************************************
+      PDF.js worker config
+    *****************************************************************************/
+    pdfjsLib.GlobalWorkerOptions.workerSrc = "https://unpkg.com/pdfjs-dist@3.11.172/build/pdf.worker.min.js";
+
+    /*****************************************************************************
+      CLIENT ID (anonymous per-browser identity)
+      - Used to store per-client favourites & reading progress in Realtime DB
+    *****************************************************************************/
+    const clientKey = 'libra_client_id_v1';
+    let clientId = localStorage.getItem(clientKey);
+    if (!clientId) {
+      clientId = 'c_' + Math.random().toString(36).slice(2, 10);
+      localStorage.setItem(clientKey, clientId);
+    }
+    document.getElementById('clientBadge').textContent = `Client: ${clientId}`;
+
+    /*****************************************************************************
+      DOM refs
+    *****************************************************************************/
+    const uploadToggle = document.getElementById('uploadToggle');
+    const uploadPanel = document.getElementById('uploadPanel');
+    const uploadForm = document.getElementById('uploadForm');
+    const uTitle = document.getElementById('uTitle');
+    const uAuthor = document.getElementById('uAuthor');
+    const uDesc = document.getElementById('uDesc');
+    const uLang = document.getElementById('uLang');
+    const uCat = document.getElementById('uCat');
+    const uCover = document.getElementById('uCover');
+    const uPdf = document.getElementById('uPdf');
+    const coverPreview = document.getElementById('coverPreview');
+    const pdfPreview = document.getElementById('pdfPreview');
+    const btnCancelUpload = document.getElementById('btnCancelUpload');
+
+    const favList = document.getElementById('favList');
+    const recentList = document.getElementById('recentList');
+    const libraryGrid = document.getElementById('libraryGrid');
+    const searchInput = document.getElementById('search');
+    const clearSearch = document.getElementById('clearSearch');
+    const totalBooksCount = document.getElementById('totalBooksCount');
+
+    const readerModal = document.getElementById('readerModal');
+    const readerTitle = document.getElementById('readerTitle');
+    const readerAuthor = document.getElementById('readerAuthor');
+    const downloadPdfBtn = document.getElementById('downloadPdfBtn');
+    const toggleFavBtn = document.getElementById('toggleFavBtn');
+    const closeReaderBtn = document.getElementById('closeReaderBtn');
+
+    const prevPageBtn = document.getElementById('prevPage');
+    const nextPageBtn = document.getElementById('nextPage');
+    const pageNumEl = document.getElementById('pageNum');
+    const pageCountEl = document.getElementById('pageCount');
+    const zoomSelect = document.getElementById('zoomSelect');
+    const pdfPages = document.getElementById('pdfPages');
+    const pdfContainer = document.getElementById('pdfContainer');
+    const readProgressEl = document.getElementById('readProgress');
+
+    const toastContainer = document.getElementById('toastContainer');
+    const loadingOverlay = document.getElementById('loadingOverlay');
+
+    /*****************************************************************************
+      STATE
+    *****************************************************************************/
+    const libraryRef = db.ref('library'); // /library/{bookId} metadata
+    const userFavRef = db.ref('userFavorites/' + clientId); // boolean flags
+    const userProgressRef = db.ref('userProgress/' + clientId); // progress objects per bookId
+    let libraryCache = {}; // { id: book }
+    let favCache = {}; // { bookId: true }
+    let progressCache = {}; // { bookId: {page, percent, updatedAt} }
+
+    // Reader runtime state
+    let currentBook = null;          // metadata for currently opened book
+    let pdfDoc = null;               // PDF.js Document
+    let currentPage = 1;
+    let currentScale = parseFloat(zoomSelect.value) || 1.0;
+    let isRendering = false;
+
+    /*****************************************************************************
+      UTILITIES: toasts & loading
+    *****************************************************************************/
+    function showToast(msg, type = 'success', dur = 3500) {
+      const el = document.createElement('div');
+      el.className = 'toast-enter px-4 py-2 rounded shadow flex items-center gap-3 max-w-sm ' +
+        (type === 'success' ? 'bg-emerald-50 text-emerald-800 border border-emerald-100' :
+          type === 'error' ? 'bg-rose-50 text-rose-800 border border-rose-100' : 'bg-sky-50 text-sky-800 border border-sky-100');
+      el.innerHTML = `<div class="text-sm">${msg}</div>`;
+      toastContainer.appendChild(el);
+      requestAnimationFrame(() => el.classList.add('toast-show'));
+      setTimeout(() => { el.classList.remove('toast-show'); setTimeout(() => el.remove(), 300); }, dur);
+    }
+    function showLoading(on = true) { loadingOverlay.classList.toggle('hidden', !on); }
+
+    /*****************************************************************************
+      INITIAL LISTENERS: realtime updates
+      - Listen to /library for realtime add/update/delete
+      - Listen to user favorites & progress
+    *****************************************************************************/
+    libraryRef.on('value', snap => {
+      libraryCache = snap.val() || {};
+      renderLibrary();
+      renderRecentlyAdded();
+      renderFavourites();
+    }, err => {
+      console.error(err);
+      showToast('Failed to read library: ' + (err.message || ''), 'error');
+    });
+
+    userFavRef.on('value', snap => {
+      favCache = snap.val() || {};
+      renderFavourites();
+      renderLibrary(); // update favourite UI in cards
+    });
+
+    userProgressRef.on('value', snap => {
+      progressCache = snap.val() || {};
+      // update UI where needed (progress badge in cards)
+      renderLibrary();
+    });
+
+    /*****************************************************************************
+      UPLOAD: handlers
+    *****************************************************************************/
+    uploadToggle.addEventListener('click', () => uploadPanel.classList.toggle('hidden'));
+
+    // preview cover
+    uCover.addEventListener('change', (e) => {
+      const f = e.target.files[0];
+      if (!f) { coverPreview.innerHTML = 'No cover selected'; return; }
+      if (!f.type.startsWith('image/')) { showToast('Choose an image file for cover', 'error'); uCover.value = ''; return; }
+      const reader = new FileReader();
+      reader.onload = () => coverPreview.innerHTML = `<img src="${reader.result}" class="w-full h-full object-cover">`;
+      reader.readAsDataURL(f);
+    });
+
+    uPdf.addEventListener('change', (e) => {
+      const f = e.target.files[0];
+      if (!f) { pdfPreview.textContent = 'Select a PDF'; return; }
+      if (f.type !== 'application/pdf') { showToast('Please select a PDF file', 'error'); uPdf.value = ''; return; }
+      pdfPreview.textContent = `${f.name} — ${(f.size/1024/1024).toFixed(2)} MB`;
+    });
+
+    btnCancelUpload.addEventListener('click', () => {
+      uploadForm.reset();
+      coverPreview.innerHTML = 'No cover selected';
+      pdfPreview.textContent = 'Select a PDF';
+      uploadPanel.classList.add('hidden');
+    });
+
+    uploadForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const title = uTitle.value.trim();
+      if (!title) { showToast('Title is required', 'error'); return; }
+      const pdfFile = uPdf.files[0];
+      if (!pdfFile) { showToast('PDF file required', 'error'); return; }
+      showLoading(true);
+
+      try {
+        // push a new entry to get a unique id
+        const newRef = libraryRef.push();
+        const bookId = newRef.key;
+
+        // upload files: pdf and optional cover
+        const pdfPath = `books_pdfs/${bookId}/${Date.now()}.pdf`;
+        const pdfRef = storage.ref(pdfPath);
+        const uploadTaskPdf = await pdfRef.put(pdfFile);
+        const pdfURL = await pdfRef.getDownloadURL();
+
+        let coverURL = null, coverPath = null;
+        const coverFile = uCover.files[0];
+        if (coverFile) {
+          const ext = coverFile.name.split('.').pop();
+          coverPath = `book_covers/${bookId}/${Date.now()}.${ext}`;
+          const coverRef = storage.ref(coverPath);
+          await coverRef.put(coverFile);
+          coverURL = await coverRef.getDownloadURL();
+        }
+
+        const metadata = {
+          title,
+          author: uAuthor.value.trim() || '',
+          description: uDesc.value.trim() || '',
+          language: uLang.value.trim() || '',
+          category: uCat.value.trim() || '',
+          pdfURL,
+          pdfPath,
+          coverURL: coverURL || '',
+          coverPath: coverPath || '',
+          createdAt: Date.now(),
+          uploaderClient: clientId
+        };
+
+        // save metadata in DB
+        await newRef.set(metadata);
+
+        showToast('Upload successful', 'success');
+        uploadForm.reset();
+        coverPreview.innerHTML = 'No cover selected';
+        pdfPreview.textContent = 'Select a PDF';
+        uploadPanel.classList.add('hidden');
+      } catch (err) {
+        console.error(err);
+        showToast('Upload failed: ' + (err.message || ''), 'error');
+      } finally {
+        showLoading(false);
+      }
+    });
+
+    /*****************************************************************************
+      RENDER: Library grid & helper lists
+    *****************************************************************************/
+    function renderLibrary() {
+      const q = (searchInput.value || '').trim().toLowerCase();
+      const items = Object.entries(libraryCache || {}).map(([id, b]) => ({ id, ...b }))
+        .sort((a,b) => (b.createdAt||0) - (a.createdAt||0));
+
+      const filtered = items.filter(b => {
+        if (!q) return true;
+        const hay = `${b.title||''} ${b.author||''} ${b.category||''} ${b.language||''}`.toLowerCase();
+        return hay.includes(q);
+      });
+
+      totalBooksCount.textContent = `${filtered.length} books`;
+
+      libraryGrid.innerHTML = '';
+      filtered.forEach(b => libraryGrid.appendChild(createBookCard(b)));
+    }
+
+    function renderRecentlyAdded(limit = 5) {
+      const items = Object.entries(libraryCache || {}).map(([id, b]) => ({ id, ...b }))
+        .sort((a,b) => (b.createdAt||0) - (a.createdAt||0))
+        .slice(0, limit);
+
+      recentList.innerHTML = '';
+      items.forEach(b => {
+        const el = document.createElement('div');
+        el.className = 'flex items-center gap-3';
+        el.innerHTML = `
+          <div class="w-12 h-16 bg-gray-100 rounded overflow-hidden">${b.coverURL ? `<img src="${b.coverURL}" class="w-full h-full object-cover">` : `<div class="w-full h-full flex items-center justify-center text-xs text-slate-500">No cover</div>`}</div>
+          <div class="flex-1 text-sm">
+            <div class="font-medium truncate">${escapeHtml(b.title)}</div>
+            <div class="text-xs text-slate-500">${escapeHtml(b.author||'—')}</div>
+          </div>
+          <div class="text-xs text-slate-400">${timeAgo(b.createdAt)}</div>
+        `;
+        el.querySelector('.font-medium').addEventListener('click', () => openReader(b.id));
+        recentList.appendChild(el);
+      });
+    }
+
+    function renderFavourites() {
+      const favIds = Object.keys(favCache || {}).filter(k => favCache[k]);
+      favList.innerHTML = '';
+      if (favIds.length === 0) {
+        favList.innerHTML = '<div class="text-sm text-slate-500">No favourites yet</div>';
+        return;
+      }
+      favIds.forEach(id => {
+        const b = libraryCache[id];
+        if (!b) return;
+        const el = document.createElement('div');
+        el.className = 'flex items-center gap-3';
+        el.innerHTML = `
+          <div class="w-10 h-14 bg-gray-100 rounded overflow-hidden">${b.coverURL ? `<img src="${b.coverURL}" class="w-full h-full object-cover">` : `<div class="w-full h-full flex items-center justify-center text-xs text-slate-500">No</div>`}</div>
+          <div class="text-sm flex-1">
+            <div class="font-medium truncate">${escapeHtml(b.title)}</div>
+            <div class="text-xs text-slate-500">${escapeHtml(b.author||'—')}</div>
+          </div>
+          <button data-id="${id}" class="text-xs px-2 py-1 bg-rose-50 text-rose-600 rounded">Remove</button>
+        `;
+        el.querySelector('button').addEventListener('click', async () => {
+          await userFavRef.child(id).remove();
+          showToast('Removed from favourites', 'info');
+        });
+        favList.appendChild(el);
+      });
+    }
+
+    function createBookCard(book) {
+      const fav = !!favCache[book.id];
+      const prog = progressCache[book.id] || {};
+      const percent = Math.round((prog.percent || 0));
+      const el = document.createElement('article');
+      el.className = 'bg-white rounded-lg p-3 shadow flex flex-col book-card';
+      el.innerHTML = `
+        <div class="relative h-44 rounded overflow-hidden bg-gray-100">
+          ${book.coverURL ? `<img src="${book.coverURL}" class="w-full h-full object-cover">` : `<div class="w-full h-full flex items-center justify-center text-sm text-slate-500">No cover</div>`}
+          <button data-id="${book.id}" class="absolute top-2 right-2 px-2 py-1 rounded bg-white/80 text-sm">${fav ? '♥' : '♡'}</button>
+        </div>
+        <div class="mt-3 flex-1">
+          <div class="font-semibold text-sm truncate">${escapeHtml(book.title)}</div>
+          <div class="text-xs text-slate-500 truncate">${escapeHtml(book.author||'—')}</div>
+          <div class="text-xs text-slate-400 mt-2">${escapeHtml(book.category||'')} • ${escapeHtml(book.language||'')}</div>
+        </div>
+        <div class="mt-3 flex items-center justify-between text-xs">
+          <div class="text-slate-500">${timeAgo(book.createdAt)}</div>
+          <div class="flex items-center gap-2">
+            <button data-id="${book.id}" class="viewBtn px-2 py-1 bg-slate-100 rounded">Read</button>
+            <a data-id="${book.id}" class="downloadLink px-2 py-1 bg-slate-100 rounded">Download</a>
+          </div>
+        </div>
+        <div class="mt-2 text-xs">
+          <div class="w-full bg-slate-100 rounded h-2 overflow-hidden">
+            <div style="width:${percent}%;" class="h-full bg-indigo-600"></div>
+          </div>
+          <div class="text-xs text-slate-500 mt-1">${percent}% read</div>
+        </div>
+      `;
+
+      // handlers
+      el.querySelector('button[data-id]').addEventListener('click', async (ev) => {
+        const id = ev.currentTarget.dataset.id;
+        const isFav = !!favCache[id];
+        if (isFav) {
+          await userFavRef.child(id).remove();
+          showToast('Removed from favourites', 'info');
+        } else {
+          await userFavRef.child(id).set(true);
+          showToast('Added to favourites', 'success');
+        }
+      });
+
+      el.querySelector('.viewBtn').addEventListener('click', () => openReader(book.id));
+      const downloadLink = el.querySelector('.downloadLink');
+      downloadLink.href = book.pdfURL || '#';
+      downloadLink.setAttribute('download', `${book.title || 'book'}.pdf`);
+      // show visually the download as normal link
+      downloadLink.addEventListener('click', (e) => {
+        if (!book.pdfURL) { e.preventDefault(); showToast('Download not available', 'error'); }
+      });
+
+      return el;
+    }
+
+    /*****************************************************************************
+      SEARCH
+    *****************************************************************************/
+    let searchTimer = null;
+    searchInput.addEventListener('input', () => {
+      const q = searchInput.value.trim();
+      clearSearch.classList.toggle('hidden', !q);
+      clearTimeout(searchTimer);
+      searchTimer = setTimeout(() => renderLibrary(), 200);
+    });
+    clearSearch.addEventListener('click', () => { searchInput.value = ''; clearSearch.classList.add('hidden'); renderLibrary(); });
+
+    /*****************************************************************************
+      READER: open, render using PDF.js, navigate, track progress
+    *****************************************************************************/
+    async function openReader(bookId) {
+      const book = libraryCache[bookId];
+      if (!book) { showToast('Book not found', 'error'); return; }
+      currentBook = book;
+      readerTitle.textContent = book.title;
+      readerAuthor.textContent = `— ${book.author || 'Unknown'}`;
+
+      // set download link
+      downloadPdfBtn.onclick = () => { window.open(book.pdfURL, '_blank'); };
+
+      // toggle fav state in reader
+      updateFavButton(bookId);
+
+      // open modal
+      readerModal.classList.remove('hidden');
+
+      // load PDF via PDF.js (fetching cross-origin may require CORS on storage bucket)
+      try {
+        showLoading(true);
+        const loadingTask = pdfjsLib.getDocument({ url: book.pdfURL });
+        pdfDoc = await loadingTask.promise;
+        pageCountEl.textContent = pdfDoc.numPages;
+        // initial page = persisted progress page or 1
+        const prog = progressCache[bookId] || {};
+        currentPage = Math.max(1, (prog.page || 1));
+        currentScale = parseFloat(zoomSelect.value) || 1.0;
+        await renderAllPages(pdfDoc, currentScale, currentPage);
+        updatePageUI();
+        // when viewing, start listening to container scroll to update progress
+        // but since we render pages as separate canvases stacked, measure visibility of pages
+        observeReadingProgress(bookId);
+      } catch (err) {
+        console.error('PDF load error', err);
+        showToast('Failed to load PDF (CORS/storage rules?)', 'error');
+        readerModal.classList.add('hidden');
+      } finally {
+        showLoading(false);
+      }
+    }
+
+    function updateFavButton(bookId) {
+      const isFav = !!favCache[bookId];
+      toggleFavBtn.textContent = isFav ? '♥ Favourite' : '♡ Favourite';
+      toggleFavBtn.onclick = async () => {
+        if (isFav) {
+          await userFavRef.child(bookId).remove();
+          showToast('Removed from favourites', 'info');
+        } else {
+          await userFavRef.child(bookId).set(true);
+          showToast('Added to favourites', 'success');
+        }
+      };
+      // toggleFavBtn initial label already set
+    }
+
+    // Render all pages as canvases (so we can measure scroll/visibility)
+    async function renderAllPages(pdfDoc, scale=1.0, startPage=1) {
+      pdfPages.innerHTML = '';
+      const containerWidth = Math.min(window.innerWidth * 0.9, 960);
+      for (let i = 1; i <= pdfDoc.numPages; i++) {
+        const page = await pdfDoc.getPage(i);
+        // create canvas
+        const viewport = page.getViewport({ scale: scale });
+        // limit width to container
+        const desiredScale = Math.min(scale, containerWidth / viewport.width);
+        const vp = page.getViewport({ scale: desiredScale });
+        const canvas = document.createElement('canvas');
+        canvas.className = 'mx-auto block mb-4 bg-white shadow-sm';
+        canvas.width = Math.floor(vp.width);
+        canvas.height = Math.floor(vp.height);
+        const ctx = canvas.getContext('2d');
+        // render
+        const renderTask = page.render({ canvasContext: ctx, viewport: vp });
+        await renderTask.promise;
+        // embed page number for reference
+        const wrapper = document.createElement('div');
+        wrapper.className = 'pdf-page';
+        wrapper.dataset.page = i;
+        wrapper.appendChild(canvas);
+        pdfPages.appendChild(wrapper);
+      }
+      // After rendering, scroll to startPage
+      requestAnimationFrame(() => {
+        scrollToPage(startPage);
+      });
+    }
+
+    // scroll to a page wrapper
+    function scrollToPage(pageNum) {
+      const node = pdfPages.querySelector(`.pdf-page[data-page="${pageNum}"]`);
+      if (node) node.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+
+    // observe scroll to compute reading progress and save to DB
+    let progressObserver = null;
+    function observeReadingProgress(bookId) {
+      if (progressObserver) progressObserver.disconnect();
+      const pages = Array.from(pdfPages.querySelectorAll('.pdf-page'));
+      progressObserver = new IntersectionObserver((entries) => {
+        entries.forEach(async entry => {
+          if (entry.isIntersecting) {
+            const page = Number(entry.target.dataset.page);
+            // compute percent = page / total * 100 (approx) + more precise by visibility ratio
+            const total = pdfDoc ? pdfDoc.numPages : pages.length;
+            // approximate percent by page index
+            let ratio = entry.intersectionRatio || 0;
+            // percent based on page index and ratio
+            const percent = Math.min(100, Math.round(((page - 1) + ratio) / total * 100));
+            readProgressEl.textContent = `${percent}%`;
+            pageNumEl.textContent = page;
+            pageCountEl.textContent = total;
+            // persist progress: page and percent
+            await userProgressRef.child(bookId).set({ page, percent, updatedAt: Date.now() });
+          }
+        });
+      }, { root: pdfContainer, threshold: [0.25, 0.5, 0.75, 1] });
+      pages.forEach(p => progressObserver.observe(p));
+    }
+
+    // navigation
+    prevPageBtn.addEventListener('click', () => {
+      const prev = Math.max(1, Number(pageNumEl.textContent || 1) - 1);
+      scrollToPage(prev);
+    });
+    nextPageBtn.addEventListener('click', () => {
+      const next = Math.min(Number(pageCountEl.textContent || 1), Number(pageNumEl.textContent || 1) + 1);
+      scrollToPage(next);
+    });
+    zoomSelect.addEventListener('change', async () => {
+      if (!pdfDoc) return;
+      const scale = parseFloat(zoomSelect.value);
+      currentScale = scale;
+      showLoading(true);
+      await renderAllPages(pdfDoc, scale, Number(pageNumEl.textContent || 1) );
+      updatePageUI();
+      showLoading(false);
+    });
+
+    // close reader
+    closeReaderBtn.addEventListener('click', () => {
+      readerModal.classList.add('hidden');
+      if (progressObserver) { progressObserver.disconnect(); progressObserver = null; }
+      pdfPages.innerHTML = '';
+      pdfDoc = null;
+    });
+
+    /*****************************************************************************
+      HELPERS & SMALL UTILITIES
+    *****************************************************************************/
+    function escapeHtml(s='') {
+      return String(s)
+        .replaceAll('&','&amp;')
+        .replaceAll('<','&lt;')
+        .replaceAll('>','&gt;')
+        .replaceAll('"','&quot;')
+        .replaceAll("'", '&#039;');
+    }
+
+    function timeAgo(ts) {
+      if (!ts) return '—';
+      const s = Math.floor((Date.now() - ts) / 1000);
+      if (s < 60) return `${s}s`;
+      const m = Math.floor(s/60);
+      if (m < 60) return `${m}m`;
+      const h = Math.floor(m/60);
+      if (h < 24) return `${h}h`;
+      const d = Math.floor(h/24);
+      return `${d}d`;
+    }
+
+    /*****************************************************************************
+      MISC UI hookups
+    *****************************************************************************/
+    // open reader from recent list click by binding created earlier
+    // search & clear
+    document.getElementById('clearSearch').addEventListener('click', () => { searchInput.value = ''; renderLibrary(); });
+    searchInput.addEventListener('input', () => { document.getElementById('clearSearch').classList.toggle('hidden', !searchInput.value); renderLibrary(); });
+
+    /*****************************************************************************
+      INITIAL NOTES
+      - This demo stores per-client data under /userFavorites and /userProgress using
+        a generated clientId kept in localStorage. For a multi-user authenticated
+        system, use Firebase Authentication and save in paths under uid.
+    *****************************************************************************/
+    console.info('Digital Library Module loaded. Replace firebaseConfig and enable Storage CORS for PDF display.');
+
+  </script>
+</body>
+</html>
