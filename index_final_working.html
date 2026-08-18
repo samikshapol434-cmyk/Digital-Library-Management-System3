@@ -73,6 +73,7 @@
             <a href="#home" class="nav-link text-sm font-medium hover:text-primary">Home</a>
             <a href="#about" class="nav-link text-sm font-medium hover:text-primary">About</a>
             <a href="#books" class="nav-link text-sm font-medium hover:text-primary">Books</a>
+            <a href="#book-management" class="nav-link text-sm font-medium hover:text-primary">Book Management</a>
             <a href="#categories" class="nav-link text-sm font-medium hover:text-primary">Categories</a>
             <a href="#dashboard" class="nav-link text-sm font-medium hover:text-primary">Dashboard</a>
             <a href="#contact" class="nav-link text-sm font-medium hover:text-primary">Contact</a>
@@ -103,6 +104,7 @@
           <a href="#home" class="block px-3 py-2 rounded-md text-base font-medium hover:bg-slate-100 dark:hover:bg-slate-800">Home</a>
           <a href="#about" class="block px-3 py-2 rounded-md text-base font-medium hover:bg-slate-100 dark:hover:bg-slate-800">About</a>
           <a href="#books" class="block px-3 py-2 rounded-md text-base font-medium hover:bg-slate-100 dark:hover:bg-slate-800">Books</a>
+          <a href="#book-management" class="block px-3 py-2 rounded-md text-base font-medium hover:bg-slate-100 dark:hover:bg-slate-800">Book Management</a>
           <a href="#categories" class="block px-3 py-2 rounded-md text-base font-medium hover:bg-slate-100 dark:hover:bg-slate-800">Categories</a>
           <a href="#dashboard" class="block px-3 py-2 rounded-md text-base font-medium hover:bg-slate-100 dark:hover:bg-slate-800">Dashboard</a>
           <a href="#contact" class="block px-3 py-2 rounded-md text-base font-medium hover:bg-slate-100 dark:hover:bg-slate-800">Contact</a>
@@ -461,9 +463,9 @@
         <div class="rounded-lg p-6 bg-slate-50 dark:bg-slate-800 shadow">
           <h4 class="font-semibold mb-3">Quick Links</h4>
           <div class="flex flex-col sm:flex-row gap-3">
-            <a href="#login" class="px-4 py-2 bg-white dark:bg-slate-900 border rounded text-sm">Login</a>
-            <a href="#register" class="px-4 py-2 bg-primary text-white rounded text-sm">Register</a>
-            <a href="#dashboard" class="px-4 py-2 bg-white dark:bg-slate-900 border rounded text-sm">Dashboard</a>
+            <button type="button" data-go-section="login" class="px-4 py-2 bg-white dark:bg-slate-900 border rounded text-sm">Login</button>
+            <button type="button" data-go-section="register" class="px-4 py-2 bg-primary text-white rounded text-sm">Register</button>
+            <button type="button" data-go-section="dashboard" class="px-4 py-2 bg-white dark:bg-slate-900 border rounded text-sm">Dashboard</button>
           </div>
         </div>
       </div>
@@ -472,7 +474,7 @@
     <!-- =========================
          LOGIN / REGISTER / DASHBOARD
          ========================= -->
-    <section id="login" class="py-16 bg-slate-50 dark:bg-slate-900">
+    <section id="login" class="py-16 bg-slate-50 dark:bg-slate-900 scroll-mt-24">
       <div class="max-w-5xl mx-auto px-4">
         <div class="grid md:grid-cols-2 gap-8">
           <div class="bg-white dark:bg-slate-800 rounded-xl shadow p-6">
@@ -493,7 +495,7 @@
             </form>
           </div>
 
-          <div id="register" class="bg-white dark:bg-slate-800 rounded-xl shadow p-6">
+          <div id="register" class="bg-white dark:bg-slate-800 rounded-xl shadow p-6 scroll-mt-24">
             <h2 class="text-2xl font-bold mb-2">Register</h2>
             <p class="text-sm text-slate-500 dark:text-slate-300 mb-5">Create a new library account.</p>
             <form id="registerForm" class="space-y-4">
@@ -513,7 +515,108 @@
       </div>
     </section>
 
-    <section id="dashboard" class="py-16">
+
+    <!-- =========================
+         BOOK MANAGEMENT
+         ========================= -->
+    <section id="book-management" class="py-16 bg-slate-50 dark:bg-slate-900">
+      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="flex flex-wrap items-center justify-between gap-4 mb-8">
+          <div>
+            <h2 class="text-3xl font-bold">Book Management</h2>
+            <p class="text-slate-500 dark:text-slate-300 mt-1">Add, edit, delete and view books using Firebase.</p>
+          </div>
+          <button id="openAddBookBtn" class="px-5 py-3 bg-primary text-white rounded-md shadow hover:opacity-90">
+            + Add Book
+          </button>
+        </div>
+
+        <!-- Add/Edit Book Form -->
+        <div id="bookFormCard" class="hidden mb-8 bg-white dark:bg-slate-800 rounded-xl shadow p-6">
+          <div class="flex items-center justify-between mb-5">
+            <h3 id="bookFormTitle" class="text-xl font-bold">Add New Book</h3>
+            <button type="button" id="closeBookFormBtn" class="text-slate-500 hover:text-rose-600 text-xl">✕</button>
+          </div>
+
+          <form id="bookForm" class="grid md:grid-cols-2 gap-4">
+            <input type="hidden" id="bookId">
+
+            <div>
+              <label class="block text-sm font-medium mb-1">Book Name</label>
+              <input id="bookName" type="text" required placeholder="Enter book name"
+                class="w-full px-4 py-3 border rounded-md bg-white dark:bg-slate-900">
+            </div>
+
+            <div>
+              <label class="block text-sm font-medium mb-1">Author Name</label>
+              <input id="bookAuthor" type="text" required placeholder="Enter author name"
+                class="w-full px-4 py-3 border rounded-md bg-white dark:bg-slate-900">
+            </div>
+
+            <div>
+              <label class="block text-sm font-medium mb-1">Category</label>
+              <input id="bookCategory" type="text" required placeholder="e.g. Programming"
+                class="w-full px-4 py-3 border rounded-md bg-white dark:bg-slate-900">
+            </div>
+
+            <div>
+              <label class="block text-sm font-medium mb-1">Total Copies</label>
+              <input id="bookTotal" type="number" min="0" required placeholder="10"
+                class="w-full px-4 py-3 border rounded-md bg-white dark:bg-slate-900">
+            </div>
+
+            <div>
+              <label class="block text-sm font-medium mb-1">Available Copies</label>
+              <input id="bookAvailable" type="number" min="0" required placeholder="10"
+                class="w-full px-4 py-3 border rounded-md bg-white dark:bg-slate-900">
+            </div>
+
+            <div>
+              <label class="block text-sm font-medium mb-1">Cover Image URL</label>
+              <input id="bookCover" type="url" placeholder="https://..."
+                class="w-full px-4 py-3 border rounded-md bg-white dark:bg-slate-900">
+            </div>
+
+            <div class="md:col-span-2 flex gap-3 pt-2">
+              <button type="submit" class="px-5 py-3 bg-primary text-white rounded-md">Save Book</button>
+              <button type="button" id="cancelBookBtn" class="px-5 py-3 border rounded-md">Cancel</button>
+              <p id="bookFormMessage" class="self-center text-sm"></p>
+            </div>
+          </form>
+        </div>
+
+        <!-- Search -->
+        <div class="mb-5">
+          <input id="bookSearch" type="search" placeholder="Search book name, author or category..."
+            class="w-full px-4 py-3 border rounded-md bg-white dark:bg-slate-800">
+        </div>
+
+        <!-- Book List -->
+        <div class="bg-white dark:bg-slate-800 rounded-xl shadow overflow-hidden">
+          <div class="overflow-x-auto">
+            <table class="w-full text-left">
+              <thead class="bg-slate-100 dark:bg-slate-700">
+                <tr>
+                  <th class="p-4">Book</th>
+                  <th class="p-4">Author</th>
+                  <th class="p-4">Category</th>
+                  <th class="p-4">Total</th>
+                  <th class="p-4">Available</th>
+                  <th class="p-4">Action</th>
+                </tr>
+              </thead>
+              <tbody id="bookListBody">
+                <tr>
+                  <td colspan="6" class="p-6 text-center text-slate-500">Loading books...</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="dashboard" class="py-16 scroll-mt-24">
       <div class="max-w-5xl mx-auto px-4">
         <div class="bg-white dark:bg-slate-800 rounded-xl shadow p-6">
           <div class="flex flex-wrap items-center justify-between gap-4">
@@ -1022,6 +1125,35 @@
     }
 
 
+
+    // =========================
+    // Navigation button actions
+    // =========================
+    function goToSection(id) {
+      const section = document.getElementById(id);
+      if (!section) return;
+      section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+      // Close mobile menu if it exists.
+      const mobileMenu = document.getElementById('mobileMenu');
+      if (mobileMenu) mobileMenu.classList.add('hidden');
+    }
+
+    document.querySelectorAll('a[href="#login"], a[href="#register"], a[href="#dashboard"], a[href="#book-management"]').forEach(link => {
+      link.addEventListener('click', (e) => {
+        const id = link.getAttribute('href')?.substring(1);
+        if (id && document.getElementById(id)) {
+          e.preventDefault();
+          goToSection(id);
+        }
+      });
+    });
+
+
+    document.querySelectorAll('[data-go-section]').forEach(btn => {
+      btn.addEventListener('click', () => goToSection(btn.dataset.goSection));
+    });
+
     // =========================
     // Firebase Authentication
     // =========================
@@ -1146,6 +1278,195 @@
       setMessage(loginMessage, 'Firebase is not initialized. Check your Firebase configuration.');
       setMessage(registerMessage, 'Firebase is not initialized. Check your Firebase configuration.');
     }
+
+
+    // =========================
+    // Book Management CRUD
+    // =========================
+    const bookFormCard = document.getElementById('bookFormCard');
+    const bookForm = document.getElementById('bookForm');
+    const bookListBody = document.getElementById('bookListBody');
+    const bookSearch = document.getElementById('bookSearch');
+    const openAddBookBtn = document.getElementById('openAddBookBtn');
+    const closeBookFormBtn = document.getElementById('closeBookFormBtn');
+    const cancelBookBtn = document.getElementById('cancelBookBtn');
+    const bookFormTitle = document.getElementById('bookFormTitle');
+    const bookFormMessage = document.getElementById('bookFormMessage');
+
+    let allBooks = {};
+
+    function showBookForm(editBook = null) {
+      bookFormCard?.classList.remove('hidden');
+      if (editBook) {
+        bookFormTitle.textContent = 'Edit Book';
+        document.getElementById('bookId').value = editBook.id;
+        document.getElementById('bookName').value = editBook.title || '';
+        document.getElementById('bookAuthor').value = editBook.author || '';
+        document.getElementById('bookCategory').value = editBook.category || '';
+        document.getElementById('bookTotal').value = editBook.total || 0;
+        document.getElementById('bookAvailable').value = editBook.available || 0;
+        document.getElementById('bookCover').value = editBook.coverURL || '';
+      } else {
+        bookFormTitle.textContent = 'Add New Book';
+        bookForm?.reset();
+        document.getElementById('bookId').value = '';
+      }
+      bookFormCard?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    function closeBookForm() {
+      bookForm?.reset();
+      document.getElementById('bookId').value = '';
+      bookFormTitle.textContent = 'Add New Book';
+      bookFormCard?.classList.add('hidden');
+      if (bookFormMessage) bookFormMessage.textContent = '';
+    }
+
+    function renderBookList(filter = '') {
+      if (!bookListBody) return;
+
+      const query = filter.trim().toLowerCase();
+      const entries = Object.entries(allBooks).filter(([id, book]) => {
+        const b = book || {};
+        return !query ||
+          String(b.title || '').toLowerCase().includes(query) ||
+          String(b.author || '').toLowerCase().includes(query) ||
+          String(b.category || '').toLowerCase().includes(query);
+      });
+
+      if (!entries.length) {
+        bookListBody.innerHTML = `
+          <tr>
+            <td colspan="6" class="p-6 text-center text-slate-500">
+              No books found. Click "+ Add Book" to add a book.
+            </td>
+          </tr>`;
+        return;
+      }
+
+      bookListBody.innerHTML = entries.map(([id, b]) => {
+        const cover = b.coverURL || 'https://images.unsplash.com/photo-1524995997946-a1c2e315a42f?q=80&w=300&auto=format&fit=crop';
+        return `
+          <tr class="border-t border-slate-200 dark:border-slate-700">
+            <td class="p-4">
+              <div class="flex items-center gap-3">
+                <img src="${cover}" onerror="this.src='https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?q=80&w=300&auto=format&fit=crop'"
+                     class="w-12 h-14 object-cover rounded" alt="Book cover">
+                <span class="font-semibold">${escapeHtml(b.title || 'Untitled')}</span>
+              </div>
+            </td>
+            <td class="p-4">${escapeHtml(b.author || 'Unknown')}</td>
+            <td class="p-4">${escapeHtml(b.category || 'General')}</td>
+            <td class="p-4">${Number(b.total || 0)}</td>
+            <td class="p-4">
+              <span class="${Number(b.available || 0) > 0 ? 'text-green-600' : 'text-rose-600'} font-medium">
+                ${Number(b.available || 0)}
+              </span>
+            </td>
+            <td class="p-4">
+              <div class="flex gap-2">
+                <button class="edit-book px-3 py-1.5 text-sm bg-amber-500 text-white rounded" data-id="${id}">Edit</button>
+                <button class="delete-book px-3 py-1.5 text-sm bg-rose-600 text-white rounded" data-id="${id}">Delete</button>
+              </div>
+            </td>
+          </tr>`;
+      }).join('');
+
+      bookListBody.querySelectorAll('.edit-book').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const id = btn.dataset.id;
+          showBookForm({ id, ...(allBooks[id] || {}) });
+        });
+      });
+
+      bookListBody.querySelectorAll('.delete-book').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const id = btn.dataset.id;
+          const book = allBooks[id];
+          if (!book) return;
+
+          if (!confirm(`Delete "${book.title || 'this book'}"?`)) return;
+
+          try {
+            await firebase.database().ref('books/' + id).remove();
+          } catch (error) {
+            console.error('Delete book error:', error);
+            alert('Unable to delete the book. Check Firebase Database Rules.');
+          }
+        });
+      });
+    }
+
+    async function loadBooksForManagement() {
+      if (typeof firebase === 'undefined' || !firebase.apps.length) {
+        renderBookList();
+        return;
+      }
+
+      try {
+        firebase.database().ref('books').on('value', snapshot => {
+          allBooks = snapshot.val() || {};
+          renderBookList(bookSearch?.value || '');
+        });
+      } catch (error) {
+        console.error('Book list error:', error);
+        if (bookListBody) {
+          bookListBody.innerHTML = `<tr><td colspan="6" class="p-6 text-center text-rose-600">Could not load books.</td></tr>`;
+        }
+      }
+    }
+
+    openAddBookBtn?.addEventListener('click', () => showBookForm());
+    closeBookFormBtn?.addEventListener('click', closeBookForm);
+    cancelBookBtn?.addEventListener('click', closeBookForm);
+    bookSearch?.addEventListener('input', () => renderBookList(bookSearch.value));
+
+    bookForm?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+
+      if (typeof firebase === 'undefined' || !firebase.apps.length) {
+        if (bookFormMessage) bookFormMessage.textContent = 'Firebase is not initialized.';
+        return;
+      }
+
+      const id = document.getElementById('bookId').value.trim();
+      const title = document.getElementById('bookName').value.trim();
+      const author = document.getElementById('bookAuthor').value.trim();
+      const category = document.getElementById('bookCategory').value.trim();
+      const total = Math.max(0, Number(document.getElementById('bookTotal').value));
+      const available = Math.min(total, Math.max(0, Number(document.getElementById('bookAvailable').value)));
+      const coverURL = document.getElementById('bookCover').value.trim();
+
+      const bookData = {
+        title,
+        author,
+        category,
+        total,
+        available,
+        coverURL,
+        updatedAt: firebase.database.ServerValue.TIMESTAMP
+      };
+
+      try {
+        if (id) {
+          await firebase.database().ref('books/' + id).update(bookData);
+          if (bookFormMessage) bookFormMessage.textContent = 'Book updated successfully.';
+        } else {
+          bookData.createdAt = firebase.database.ServerValue.TIMESTAMP;
+          await firebase.database().ref('books').push(bookData);
+          if (bookFormMessage) bookFormMessage.textContent = 'Book added successfully.';
+        }
+
+        setTimeout(closeBookForm, 500);
+      } catch (error) {
+        console.error('Save book error:', error);
+        if (bookFormMessage) {
+          bookFormMessage.textContent = 'Could not save book. Check Firebase Database Rules.';
+        }
+      }
+    });
+
+    loadBooksForManagement();
 
     // Utility functions for Firebase script
     function escapeHtml(s='') { return String(s||'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;'); }
