@@ -1488,5 +1488,128 @@
   <script>
 (function(){if(!window.chatbase||window.chatbase("getState")!=="initialized"){window.chatbase=(...arguments)=>{if(!window.chatbase.q){window.chatbase.q=[]}window.chatbase.q.push(arguments)};window.chatbase=new Proxy(window.chatbase,{get(target,prop){if(prop==="q"){return target.q}return(...args)=>target(prop,...args)}})}const onLoad=function(){const script=document.createElement("script");script.src="https://www.chatbase.co/embed.min.js";script.id="eXwFX_XaOCqvxdHNXAFh5";script.domain="www.chatbase.co";document.body.appendChild(script)};if(document.readyState==="complete"){onLoad()}else{window.addEventListener("load",onLoad)}})();
 </script>
+  <!-- 📖 Book Text + Listen Controls -->
+
+<div class="book-reader">
+
+    <h2>📖 Python Programming</h2>
+
+    <p id="bookText">
+        Python is a high-level programming language.
+        It is easy to learn and widely used in web development,
+        artificial intelligence, data science and automation.
+    </p>
+
+    <div class="voice-buttons">
+
+        <button onclick="listenBook()">
+            🔊 Listen
+        </button>
+
+        <button onclick="pauseBook()">
+            ⏸️ Pause
+        </button>
+
+        <button onclick="resumeBook()">
+            ▶️ Resume
+        </button>
+
+        <button onclick="stopBook()">
+            ⏹️ Stop
+        </button>
+
+    </div>
+
+</div>
+
+
+<style>
+.book-reader {
+    max-width: 700px;
+    margin: 30px auto;
+    padding: 25px;
+    border-radius: 15px;
+    background: #f5f7ff;
+    box-shadow: 0 5px 20px rgba(0,0,0,0.15);
+}
+
+.book-reader h2 {
+    margin-bottom: 15px;
+}
+
+.book-reader p {
+    font-size: 18px;
+    line-height: 1.7;
+}
+
+.voice-buttons {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-top: 20px;
+}
+
+.voice-buttons button {
+    border: none;
+    padding: 12px 18px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 15px;
+    font-weight: bold;
+}
+
+.voice-buttons button:hover {
+    transform: scale(1.05);
+}
+</style>
+
+
+<script>
+
+let speech = null;
+
+// 🔊 LISTEN
+function listenBook() {
+
+    // आधीचा आवाज बंद करा
+    window.speechSynthesis.cancel();
+
+    const text = document.getElementById("bookText").innerText;
+
+    speech = new SpeechSynthesisUtterance(text);
+
+    speech.lang = "en-US";
+    speech.rate = 0.9;
+    speech.pitch = 1;
+
+    window.speechSynthesis.speak(speech);
+}
+
+
+// ⏸️ PAUSE
+function pauseBook() {
+
+    if (window.speechSynthesis.speaking) {
+        window.speechSynthesis.pause();
+    }
+}
+
+
+// ▶️ RESUME
+function resumeBook() {
+
+    if (window.speechSynthesis.paused) {
+        window.speechSynthesis.resume();
+    }
+}
+
+
+// ⏹️ STOP
+function stopBook() {
+
+    window.speechSynthesis.cancel();
+}
+
+</script>
 </body>
 </html>
