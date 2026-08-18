@@ -461,13 +461,91 @@
         <div class="rounded-lg p-6 bg-slate-50 dark:bg-slate-800 shadow">
           <h4 class="font-semibold mb-3">Quick Links</h4>
           <div class="flex flex-col sm:flex-row gap-3">
-            <a id="login" href="#login" class="px-4 py-2 bg-white dark:bg-slate-900 border rounded text-sm">Login</a>
-            <a id="register" href="#register" class="px-4 py-2 bg-primary text-white rounded text-sm">Register</a>
+            <a href="#login" class="px-4 py-2 bg-white dark:bg-slate-900 border rounded text-sm">Login</a>
+            <a href="#register" class="px-4 py-2 bg-primary text-white rounded text-sm">Register</a>
             <a href="#dashboard" class="px-4 py-2 bg-white dark:bg-slate-900 border rounded text-sm">Dashboard</a>
           </div>
         </div>
       </div>
     </section>
+
+    <!-- =========================
+         LOGIN / REGISTER / DASHBOARD
+         ========================= -->
+    <section id="login" class="py-16 bg-slate-50 dark:bg-slate-900">
+      <div class="max-w-5xl mx-auto px-4">
+        <div class="grid md:grid-cols-2 gap-8">
+          <div class="bg-white dark:bg-slate-800 rounded-xl shadow p-6">
+            <h2 class="text-2xl font-bold mb-2">Login</h2>
+            <p class="text-sm text-slate-500 dark:text-slate-300 mb-5">Sign in with your Firebase account.</p>
+            <form id="loginForm" class="space-y-4">
+              <input id="loginEmail" type="email" required placeholder="Email"
+                class="w-full px-4 py-3 border rounded-md bg-white dark:bg-slate-900">
+              <input id="loginPassword" type="password" required placeholder="Password"
+                class="w-full px-4 py-3 border rounded-md bg-white dark:bg-slate-900">
+              <button type="submit" class="w-full px-4 py-3 bg-primary text-white rounded-md hover:opacity-90">
+                Login
+              </button>
+              <button type="button" id="forgotPasswordBtn" class="text-sm text-primary hover:underline">
+                Forgot Password?
+              </button>
+              <p id="loginMessage" class="text-sm"></p>
+            </form>
+          </div>
+
+          <div id="register" class="bg-white dark:bg-slate-800 rounded-xl shadow p-6">
+            <h2 class="text-2xl font-bold mb-2">Register</h2>
+            <p class="text-sm text-slate-500 dark:text-slate-300 mb-5">Create a new library account.</p>
+            <form id="registerForm" class="space-y-4">
+              <input id="registerName" type="text" required placeholder="Full Name"
+                class="w-full px-4 py-3 border rounded-md bg-white dark:bg-slate-900">
+              <input id="registerEmail" type="email" required placeholder="Email"
+                class="w-full px-4 py-3 border rounded-md bg-white dark:bg-slate-900">
+              <input id="registerPassword" type="password" minlength="6" required placeholder="Password (6+ characters)"
+                class="w-full px-4 py-3 border rounded-md bg-white dark:bg-slate-900">
+              <button type="submit" class="w-full px-4 py-3 bg-primary text-white rounded-md hover:opacity-90">
+                Create Account
+              </button>
+              <p id="registerMessage" class="text-sm"></p>
+            </form>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="dashboard" class="py-16">
+      <div class="max-w-5xl mx-auto px-4">
+        <div class="bg-white dark:bg-slate-800 rounded-xl shadow p-6">
+          <div class="flex flex-wrap items-center justify-between gap-4">
+            <div>
+              <h2 class="text-2xl font-bold">User Dashboard</h2>
+              <p id="userStatus" class="text-sm text-slate-500 dark:text-slate-300 mt-1">
+                Please login to view your dashboard.
+              </p>
+            </div>
+            <button id="logoutBtn" class="hidden px-4 py-2 bg-rose-600 text-white rounded-md">
+              Logout
+            </button>
+          </div>
+
+          <div class="grid sm:grid-cols-3 gap-4 mt-6">
+            <div class="p-4 rounded-lg bg-slate-50 dark:bg-slate-900">
+              <div class="text-sm text-slate-500">Account</div>
+              <div id="dashName" class="font-semibold mt-1">Not logged in</div>
+            </div>
+            <div class="p-4 rounded-lg bg-slate-50 dark:bg-slate-900">
+              <div class="text-sm text-slate-500">Email</div>
+              <div id="dashEmail" class="font-semibold mt-1 break-all">—</div>
+            </div>
+            <div class="p-4 rounded-lg bg-slate-50 dark:bg-slate-900">
+              <div class="text-sm text-slate-500">Role</div>
+              <div id="dashRole" class="font-semibold mt-1">User</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
   </main>
 
   <!-- =========================
@@ -941,6 +1019,132 @@
       function showFirebaseLoading(show) {
         // no-op when firebase not initialized
       }
+    }
+
+
+    // =========================
+    // Firebase Authentication
+    // =========================
+    const loginForm = document.getElementById('loginForm');
+    const registerForm = document.getElementById('registerForm');
+    const logoutBtn = document.getElementById('logoutBtn');
+    const forgotPasswordBtn = document.getElementById('forgotPasswordBtn');
+    const loginMessage = document.getElementById('loginMessage');
+    const registerMessage = document.getElementById('registerMessage');
+    const userStatus = document.getElementById('userStatus');
+    const dashName = document.getElementById('dashName');
+    const dashEmail = document.getElementById('dashEmail');
+    const dashRole = document.getElementById('dashRole');
+
+    function setMessage(el, message, ok = false) {
+      if (!el) return;
+      el.textContent = message;
+      el.className = ok ? 'text-sm text-green-600' : 'text-sm text-rose-600';
+    }
+
+    function friendlyAuthError(error) {
+      const map = {
+        'auth/invalid-email': 'Please enter a valid email address.',
+        'auth/user-not-found': 'No account found with this email.',
+        'auth/wrong-password': 'Incorrect password.',
+        'auth/invalid-credential': 'Incorrect email or password.',
+        'auth/email-already-in-use': 'This email is already registered.',
+        'auth/weak-password': 'Password should contain at least 6 characters.',
+        'auth/network-request-failed': 'Network error. Please check your internet connection.'
+      };
+      return map[error.code] || error.message || 'Something went wrong.';
+    }
+
+    if (typeof firebase !== 'undefined' && firebase.apps.length) {
+      const auth = firebase.auth();
+
+      registerForm?.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        setMessage(registerMessage, 'Creating account...', true);
+
+        const name = document.getElementById('registerName').value.trim();
+        const email = document.getElementById('registerEmail').value.trim();
+        const password = document.getElementById('registerPassword').value;
+
+        try {
+          const result = await auth.createUserWithEmailAndPassword(email, password);
+          await result.user.updateProfile({ displayName: name });
+
+          // Save basic user profile in Realtime Database.
+          await firebase.database().ref('users/' + result.user.uid).set({
+            name,
+            email,
+            role: 'user',
+            createdAt: firebase.database.ServerValue.TIMESTAMP
+          });
+
+          setMessage(registerMessage, 'Registration successful. You are now logged in.', true);
+          registerForm.reset();
+          document.getElementById('dashboard')?.scrollIntoView({ behavior: 'smooth' });
+        } catch (error) {
+          setMessage(registerMessage, friendlyAuthError(error));
+        }
+      });
+
+      loginForm?.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        setMessage(loginMessage, 'Signing in...', true);
+
+        const email = document.getElementById('loginEmail').value.trim();
+        const password = document.getElementById('loginPassword').value;
+
+        try {
+          await auth.signInWithEmailAndPassword(email, password);
+          setMessage(loginMessage, 'Login successful.', true);
+          loginForm.reset();
+          document.getElementById('dashboard')?.scrollIntoView({ behavior: 'smooth' });
+        } catch (error) {
+          setMessage(loginMessage, friendlyAuthError(error));
+        }
+      });
+
+      forgotPasswordBtn?.addEventListener('click', async () => {
+        const email = document.getElementById('loginEmail').value.trim();
+        if (!email) {
+          setMessage(loginMessage, 'Enter your email first, then click Forgot Password.');
+          return;
+        }
+
+        try {
+          await auth.sendPasswordResetEmail(email);
+          setMessage(loginMessage, 'Password reset email sent. Check your inbox.', true);
+        } catch (error) {
+          setMessage(loginMessage, friendlyAuthError(error));
+        }
+      });
+
+      logoutBtn?.addEventListener('click', async () => {
+        try {
+          await auth.signOut();
+          document.getElementById('login')?.scrollIntoView({ behavior: 'smooth' });
+        } catch (error) {
+          console.error('Logout error:', error);
+        }
+      });
+
+      auth.onAuthStateChanged(async (user) => {
+        if (user) {
+          userStatus.textContent = `Welcome, ${user.displayName || 'Library User'}!`;
+          dashName.textContent = user.displayName || 'Library User';
+          dashEmail.textContent = user.email || '—';
+          dashRole.textContent = 'User';
+          logoutBtn?.classList.remove('hidden');
+        } else {
+          userStatus.textContent = 'Please login to view your dashboard.';
+          dashName.textContent = 'Not logged in';
+          dashEmail.textContent = '—';
+          dashRole.textContent = 'User';
+          logoutBtn?.classList.add('hidden');
+        }
+      });
+    } else {
+      setMessage(loginMessage, 'Firebase is not initialized. Check your Firebase configuration.');
+      setMessage(registerMessage, 'Firebase is not initialized. Check your Firebase configuration.');
     }
 
     // Utility functions for Firebase script
