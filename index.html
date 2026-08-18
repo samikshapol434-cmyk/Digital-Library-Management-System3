@@ -1611,5 +1611,27 @@ function stopBook() {
 }
 
 </script>
+  // =========================
+// POPULAR CATEGORIES
+// =========================
+
+document.querySelectorAll('.category-btn').forEach(button => {
+
+  button.addEventListener('click', () => {
+
+    const category = button.dataset.category;
+
+    // Scroll to Book Management
+    document.getElementById('book-management')?.scrollIntoView({
+      behavior: 'smooth',
+      block: 'start'
+    });
+
+    // Filter Firebase books by category
+    renderBookList(category);
+
+  });
+
+});
 </body>
 </html>
