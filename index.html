@@ -1497,6 +1497,128 @@
     });
 
     loadBooksForManagement();
+    // =========================
+// ADD SAMPLE BOOKS
+// =========================
+
+async function addSampleBooks() {
+
+  if (typeof firebase === 'undefined' || !firebase.apps.length) {
+    console.log("Firebase is not initialized.");
+    return;
+  }
+
+  const booksRef = firebase.database().ref('books');
+
+  const snapshot = await booksRef.once('value');
+
+  // Already books exist → don't add duplicates
+  if (snapshot.exists()) {
+    console.log("Books already exist. Sample books not added.");
+    return;
+  }
+
+  const sampleBooks = {
+
+    book1: {
+      title: "Python Programming",
+      author: "Reema Patel",
+      category: "Programming",
+      total: 10,
+      available: 10,
+      coverURL: "https://images.unsplash.com/photo-1526379095098-d400fd0bf935?q=80&w=800&auto=format&fit=crop"
+    },
+
+    book2: {
+      title: "Java Programming",
+      author: "Herbert Schildt",
+      category: "Programming",
+      total: 8,
+      available: 8,
+      coverURL: "https://images.unsplash.com/photo-1515879218367-8466d910aaa4?q=80&w=800&auto=format&fit=crop"
+    },
+
+    book3: {
+      title: "Data Structures Using C",
+      author: "Reema Patel",
+      category: "Computer",
+      total: 10,
+      available: 10,
+      coverURL: "https://images.unsplash.com/photo-1517694712202-14dd9538aa97?q=80&w=800&auto=format&fit=crop"
+    },
+
+    book4: {
+      title: "Artificial Intelligence",
+      author: "Stuart Russell",
+      category: "Technology",
+      total: 7,
+      available: 7,
+      coverURL: "https://images.unsplash.com/photo-1485827404703-89b55fcc595e?q=80&w=800&auto=format&fit=crop"
+    },
+
+    book5: {
+      title: "Computer Networks",
+      author: "Andrew S. Tanenbaum",
+      category: "Technology",
+      total: 12,
+      available: 12,
+      coverURL: "https://images.unsplash.com/photo-1558494949-ef010cbdcc31?q=80&w=800&auto=format&fit=crop"
+    },
+
+    book6: {
+      title: "Operating System Concepts",
+      author: "Abraham Silberschatz",
+      category: "Computer",
+      total: 9,
+      available: 9,
+      coverURL: "https://images.unsplash.com/photo-1516321318423-f06f85e504b3?q=80&w=800&auto=format&fit=crop"
+    },
+
+    book7: {
+      title: "Indian History",
+      author: "R. S. Sharma",
+      category: "History",
+      total: 6,
+      available: 6,
+      coverURL: "https://images.unsplash.com/photo-1461360228754-6e81c478b882?q=80&w=800&auto=format&fit=crop"
+    },
+
+    book8: {
+      title: "Business Management",
+      author: "Stephen P. Robbins",
+      category: "Business",
+      total: 5,
+      available: 5,
+      coverURL: "https://images.unsplash.com/photo-1556761175-b413da4baf72?q=80&w=800&auto=format&fit=crop"
+    },
+
+    book9: {
+      title: "Art and Design",
+      author: "David A. Lauer",
+      category: "Art & Design",
+      total: 5,
+      available: 5,
+      coverURL: "https://images.unsplash.com/photo-1561214115-f2f134cc4912?q=80&w=800&auto=format&fit=crop"
+    },
+
+    book10: {
+      title: "Science for Everyone",
+      author: "John Smith",
+      category: "Science",
+      total: 10,
+      available: 10,
+      coverURL: "https://images.unsplash.com/photo-1532094349884-543bc11b234d?q=80&w=800&auto=format&fit=crop"
+    }
+
+  };
+
+  await booksRef.set(sampleBooks);
+
+  console.log("✅ 10 sample books added successfully!");
+}
+
+// Run sample books
+addSampleBooks();
 
     // Utility functions for Firebase script
     function escapeHtml(s='') { return String(s||'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;'); }
