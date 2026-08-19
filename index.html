@@ -281,14 +281,44 @@
         </div>
 
         <div class="flex flex-wrap gap-3" id="categoryChips">
-          <!-- category chips -->
-          <a class="px-4 py-2 rounded-full bg-white dark:bg-slate-800 shadow text-sm hover:bg-primary hover:text-white transition">Science</a>
-          <a class="px-4 py-2 rounded-full bg-white dark:bg-slate-800 shadow text-sm hover:bg-primary hover:text-white transition">Technology</a>
-          <a class="px-4 py-2 rounded-full bg-white dark:bg-slate-800 shadow text-sm hover:bg-primary hover:text-white transition">History</a>
-          <a class="px-4 py-2 rounded-full bg-white dark:bg-slate-800 shadow text-sm hover:bg-primary hover:text-white transition">Fiction</a>
-          <a class="px-4 py-2 rounded-full bg-white dark:bg-slate-800 shadow text-sm hover:bg-primary hover:text-white transition">Business</a>
-          <a class="px-4 py-2 rounded-full bg-white dark:bg-slate-800 shadow text-sm hover:bg-primary hover:text-white transition">Art & Design</a>
-        </div>
+
+  <button type="button"
+    class="category-btn px-4 py-2 rounded-full bg-white dark:bg-slate-800 shadow text-sm hover:bg-primary hover:text-white transition"
+    data-category="Science">
+    Science
+  </button>
+
+  <button type="button"
+    class="category-btn px-4 py-2 rounded-full bg-white dark:bg-slate-800 shadow text-sm hover:bg-primary hover:text-white transition"
+    data-category="Technology">
+    Technology
+  </button>
+
+  <button type="button"
+    class="category-btn px-4 py-2 rounded-full bg-white dark:bg-slate-800 shadow text-sm hover:bg-primary hover:text-white transition"
+    data-category="History">
+    History
+  </button>
+
+  <button type="button"
+    class="category-btn px-4 py-2 rounded-full bg-white dark:bg-slate-800 shadow text-sm hover:bg-primary hover:text-white transition"
+    data-category="Fiction">
+    Fiction
+  </button>
+
+  <button type="button"
+    class="category-btn px-4 py-2 rounded-full bg-white dark:bg-slate-800 shadow text-sm hover:bg-primary hover:text-white transition"
+    data-category="Business">
+    Business
+  </button>
+
+  <button type="button"
+    class="category-btn px-4 py-2 rounded-full bg-white dark:bg-slate-800 shadow text-sm hover:bg-primary hover:text-white transition"
+    data-category="Art & Design">
+    Art & Design
+  </button>
+
+</div>
       </div>
     </section>
 
@@ -1611,27 +1641,7 @@ function stopBook() {
 }
 
 </script>
-  // =========================
-// POPULAR CATEGORIES
-// =========================
+ 
 
-document.querySelectorAll('.category-btn').forEach(button => {
-
-  button.addEventListener('click', () => {
-
-    const category = button.dataset.category;
-
-    // Scroll to Book Management
-    document.getElementById('book-management')?.scrollIntoView({
-      behavior: 'smooth',
-      block: 'start'
-    });
-
-    // Filter Firebase books by category
-    renderBookList(category);
-
-  });
-
-});
 </body>
 </html>
