@@ -1763,6 +1763,44 @@ function stopBook() {
 }
 
 </script>
+  <script>
+  // =========================
+  // 🔊 BOOK LISTEN / TEXT TO SPEECH
+  // =========================
+
+  function listenToBook(title, author, category) {
+
+    // आधीचा आवाज थांबवा
+    window.speechSynthesis.cancel();
+
+    // बोलण्यासाठी text
+    const text =
+      "Book name is " + title +
+      ". Author is " + author +
+      ". Category is " + category + ".";
+
+    // Speech तयार करा
+    const speech = new SpeechSynthesisUtterance(text);
+    // Indian English voice
+    speech.lang = "en-IN";
+
+    // आवाजाचा वेग
+    speech.rate = 0.9;
+
+    // आवाजाची pitch
+    speech.pitch = 1;
+
+    // बोलायला सुरुवात
+    window.speechSynthesis.speak(speech);
+  }
+
+  // 🔴 Stop button साठी
+  function stopListening() {
+    window.speechSynthesis.cancel();
+  }
+</script>
+
+  
  
 
 </body>
