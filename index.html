@@ -47,12 +47,173 @@
     .testimonial-visible { display:block; opacity:1; transform: none; }
   </style>
 </head>
-<body class="bg-gray-50 text-slate-800 dark:bg-slate-900 dark:text-slate-100">
+  <body class="bg-gray-50 text-slate-800 dark:bg-slate-900 dark:text-slate-100">
+    <!-- =========================
+     FIRST PAGE - LOGIN / REGISTER
+     ========================= -->
+<div id="authPage" class="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-600 to-cyan-500 px-4">
+
+  <div class="w-full max-w-md">
+
+    <div class="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl p-8">
+
+      <!-- Logo -->
+      <div class="text-center mb-6">
+        <div class="text-5xl mb-3">📚</div>
+        <h1 class="text-3xl font-bold text-slate-800 dark:text-white">
+          LibraSuite
+        </h1>
+        <p class="text-sm text-slate-500 dark:text-slate-300 mt-2">
+          Digital Library Management System
+        </p>
+      </div>
+
+      <!-- LOGIN -->
+      <div id="firstLoginBox">
+
+        <h2 class="text-2xl font-bold text-center mb-5">
+          Login
+        </h2>
+
+        <form id="firstLoginForm" class="space-y-4">
+
+          <input
+            id="firstLoginEmail"
+            type="email"
+            required
+            placeholder="Enter Email"
+            class="w-full px-4 py-3 border rounded-lg bg-white dark:bg-slate-900"
+          >
+
+          <input
+            id="firstLoginPassword"
+            type="password"
+            required
+            placeholder="Enter Password"
+            class="w-full px-4 py-3 border rounded-lg bg-white dark:bg-slate-900"
+          >
+
+          <button
+            type="submit"
+            class="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold"
+          >
+            🔐 Login
+          </button>
+
+          <button
+            type="button"
+            id="firstForgotPassword"
+            class="w-full text-sm text-blue-600 hover:underline"
+          >
+            Forgot Password?
+          </button>
+
+          <p id="firstLoginMessage" class="text-sm text-center"></p>
+
+        </form>
+
+        <div class="text-center mt-5">
+          <p class="text-sm text-slate-500">
+            Don't have an account?
+          </p>
+
+          <button
+            type="button"
+            id="showFirstRegister"
+            class="mt-2 text-blue-600 font-semibold hover:underline"
+          >
+            Create New Account
+          </button>
+        </div>
+
+      </div>
+
+
+      <!-- REGISTER -->
+      <div id="firstRegisterBox" class="hidden">
+
+        <h2 class="text-2xl font-bold text-center mb-5">
+          Create Account
+        </h2>
+
+        <form id="firstRegisterForm" class="space-y-4">
+
+          <input
+            id="firstRegisterName"
+            type="text"
+            required
+            placeholder="Full Name"
+            class="w-full px-4 py-3 border rounded-lg bg-white dark:bg-slate-900"
+          >
+
+          <input
+            id="firstRegisterEmail"
+            type="email"
+            required
+            placeholder="Email"
+            class="w-full px-4 py-3 border rounded-lg bg-white dark:bg-slate-900"
+          >
+
+          <input
+            id="firstRegisterPassword"
+            type="password"
+            minlength="6"
+            required
+            placeholder="Password (minimum 6 characters)"
+            class="w-full px-4 py-3 border rounded-lg bg-white dark:bg-slate-900"
+          >
+
+          <input
+            id="firstRegisterConfirm"
+            type="password"
+            minlength="6"
+            required
+            placeholder="Confirm Password"
+            class="w-full px-4 py-3 border rounded-lg bg-white dark:bg-slate-900"
+          >
+
+          <button
+            type="submit"
+            class="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold"
+          >
+            📝 Register
+          </button>
+
+          <p id="firstRegisterMessage" class="text-sm text-center"></p>
+
+        </form>
+
+        <div class="text-center mt-5">
+
+          <p class="text-sm text-slate-500">
+            Already have an account?
+          </p>
+
+          <button
+            type="button"
+            id="showFirstLogin"
+            class="mt-2 text-blue-600 font-semibold hover:underline"
+          >
+            Back to Login
+          </button>
+
+        </div>
+
+      </div>
+
+    </div>
+
+  </div>
+
+</div>
 
   <!-- =========================
      NAVIGATION BAR (Sticky + Responsive)
      ========================= -->
   <header class="sticky top-0 z-40">
+    <div id="mainWebsite" class="hidden">
+
+<header class="sticky top-0 z-40">
     <nav class="backdrop-blur bg-white/60 dark:bg-slate-900/60 border-b border-slate-200 dark:border-slate-800">
       <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div class="flex items-center justify-between h-16">
@@ -1003,6 +1164,320 @@
       // stop autoplays
       // (Slider & testimonials will still function on user interaction)
     }
+    // ==========================================
+// FIRST PAGE LOGIN / REGISTER SYSTEM
+// ==========================================
+
+const authPage = document.getElementById("authPage");
+const mainWebsite = document.getElementById("mainWebsite");
+
+const firstLoginBox = document.getElementById("firstLoginBox");
+const firstRegisterBox = document.getElementById("firstRegisterBox");
+
+const showFirstRegister =
+  document.getElementById("showFirstRegister");
+
+const showFirstLogin =
+  document.getElementById("showFirstLogin");
+
+const firstLoginForm =
+  document.getElementById("firstLoginForm");
+
+const firstRegisterForm =
+  document.getElementById("firstRegisterForm");
+
+const firstLoginMessage =
+  document.getElementById("firstLoginMessage");
+
+const firstRegisterMessage =
+  document.getElementById("firstRegisterMessage");
+
+
+// ==========================================
+// LOGIN / REGISTER SWITCH
+// ==========================================
+
+showFirstRegister?.addEventListener("click", () => {
+
+  firstLoginBox.classList.add("hidden");
+  firstRegisterBox.classList.remove("hidden");
+
+});
+
+
+showFirstLogin?.addEventListener("click", () => {
+
+  firstRegisterBox.classList.add("hidden");
+  firstLoginBox.classList.remove("hidden");
+
+});
+
+
+// ==========================================
+// FIRST PAGE LOGIN
+// ==========================================
+
+firstLoginForm?.addEventListener("submit", async (e) => {
+
+  e.preventDefault();
+
+  if (typeof firebase === "undefined" || !firebase.apps.length) {
+
+    firstLoginMessage.textContent =
+      "Firebase is not initialized.";
+
+    firstLoginMessage.className =
+      "text-sm text-center text-red-600";
+
+    return;
+
+  }
+
+  const email =
+    document.getElementById("firstLoginEmail").value.trim();
+
+  const password =
+    document.getElementById("firstLoginPassword").value;
+
+  firstLoginMessage.textContent = "Logging in...";
+  firstLoginMessage.className =
+    "text-sm text-center text-blue-600";
+
+  try {
+
+    await firebase.auth()
+      .signInWithEmailAndPassword(email, password);
+
+    firstLoginMessage.textContent =
+      "Login successful!";
+
+    firstLoginMessage.className =
+      "text-sm text-center text-green-600";
+
+  } catch (error) {
+
+    firstLoginMessage.textContent =
+      friendlyAuthError(error);
+
+    firstLoginMessage.className =
+      "text-sm text-center text-red-600";
+
+  }
+
+});
+
+
+// ==========================================
+// FIRST PAGE REGISTER
+// ==========================================
+
+firstRegisterForm?.addEventListener("submit", async (e) => {
+
+  e.preventDefault();
+
+  if (typeof firebase === "undefined" || !firebase.apps.length) {
+
+    firstRegisterMessage.textContent =
+      "Firebase is not initialized.";
+
+    firstRegisterMessage.className =
+      "text-sm text-center text-red-600";
+
+    return;
+
+  }
+
+  const name =
+    document.getElementById("firstRegisterName").value.trim();
+
+  const email =
+    document.getElementById("firstRegisterEmail").value.trim();
+
+  const password =
+    document.getElementById("firstRegisterPassword").value;
+
+  const confirmPassword =
+    document.getElementById("firstRegisterConfirm").value;
+
+
+  // Password check
+
+  if (password !== confirmPassword) {
+
+    firstRegisterMessage.textContent =
+      "Passwords do not match.";
+
+    firstRegisterMessage.className =
+      "text-sm text-center text-red-600";
+
+    return;
+
+  }
+
+
+  firstRegisterMessage.textContent =
+    "Creating account...";
+
+  firstRegisterMessage.className =
+    "text-sm text-center text-blue-600";
+
+
+  try {
+
+    const result =
+      await firebase.auth()
+      .createUserWithEmailAndPassword(email, password);
+
+
+    // Save name in Firebase Authentication
+
+    await result.user.updateProfile({
+      displayName: name
+    });
+
+
+    // Save user information in Realtime Database
+
+    await firebase.database()
+      .ref("users/" + result.user.uid)
+      .set({
+
+        name: name,
+        email: email,
+        role: "user",
+
+        createdAt:
+          firebase.database.ServerValue.TIMESTAMP
+
+      });
+
+
+    firstRegisterMessage.textContent =
+      "Registration successful!";
+
+    firstRegisterMessage.className =
+      "text-sm text-center text-green-600";
+
+
+    firstRegisterForm.reset();
+
+
+  } catch (error) {
+
+    firstRegisterMessage.textContent =
+      friendlyAuthError(error);
+
+    firstRegisterMessage.className =
+      "text-sm text-center text-red-600";
+
+  }
+
+});
+
+
+// ==========================================
+// FORGOT PASSWORD
+// ==========================================
+
+document
+  .getElementById("firstForgotPassword")
+  ?.addEventListener("click", async () => {
+
+    const email =
+      document.getElementById("firstLoginEmail")
+      .value.trim();
+
+
+    if (!email) {
+
+      firstLoginMessage.textContent =
+        "Please enter your email first.";
+
+      firstLoginMessage.className =
+        "text-sm text-center text-red-600";
+
+      return;
+
+    }
+
+
+    try {
+
+      await firebase.auth()
+        .sendPasswordResetEmail(email);
+
+      firstLoginMessage.textContent =
+        "Password reset email sent.";
+
+      firstLoginMessage.className =
+        "text-sm text-center text-green-600";
+
+    } catch (error) {
+
+      firstLoginMessage.textContent =
+        friendlyAuthError(error);
+
+      firstLoginMessage.className =
+        "text-sm text-center text-red-600";
+
+    }
+
+  });
+
+
+// ==========================================
+// AUTH STATE
+// ==========================================
+
+if (
+  typeof firebase !== "undefined" &&
+  firebase.apps.length
+) {
+
+  firebase.auth().onAuthStateChanged((user) => {
+
+    if (user) {
+
+      // User logged in
+
+      authPage.classList.add("hidden");
+
+      mainWebsite.classList.remove("hidden");
+
+
+      // Go to Home
+
+      setTimeout(() => {
+
+        document.getElementById("home")
+          ?.scrollIntoView({
+            behavior: "smooth",
+            block: "start"
+          });
+
+      }, 200);
+
+
+    } else {
+
+      // User logged out
+
+      authPage.classList.remove("hidden");
+
+      mainWebsite.classList.add("hidden");
+
+
+      // Show login form
+
+      firstRegisterBox.classList.add("hidden");
+
+      firstLoginBox.classList.remove("hidden");
+
+    }
+
+  });
+
+}
   </script>
 
   <!-- =========================
