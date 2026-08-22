@@ -1465,13 +1465,25 @@
               </span>
             </td>
             <td class="p-4">
-              <div class="flex gap-2">
+              <div class="flex gap-2 flex-wrap">
+                <button class="listen-book px-3 py-1.5 text-sm bg-blue-600 text-white rounded" data-id="${id}">🔊 Listen</button>
                 <button class="edit-book px-3 py-1.5 text-sm bg-amber-500 text-white rounded" data-id="${id}">Edit</button>
                 <button class="delete-book px-3 py-1.5 text-sm bg-rose-600 text-white rounded" data-id="${id}">Delete</button>
               </div>
             </td>
           </tr>`;
       }).join('');
+
+      bookListBody.querySelectorAll('.listen-book').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const book = allBooks[btn.dataset.id] || {};
+          if (typeof listenToBook === 'function') {
+            listenToBook(book.title || 'Untitled', book.author || 'Unknown', book.category || 'General');
+          } else {
+            alert('Listen feature is not available.');
+          }
+        });
+      });
 
       bookListBody.querySelectorAll('.edit-book').forEach(btn => {
         btn.addEventListener('click', () => {
